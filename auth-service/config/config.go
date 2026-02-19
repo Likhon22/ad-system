@@ -23,7 +23,7 @@ var (
 func GetConfig() *Config {
 	once.Do(func() {
 		// .env is for local dev only — ignore error in production
-		godotenv.Load()
+		_ = godotenv.Load()
 		instance = &Config{
 			Version:     os.Getenv("VERSION"),
 			ServiceName: os.Getenv("SERVICE_NAME"),

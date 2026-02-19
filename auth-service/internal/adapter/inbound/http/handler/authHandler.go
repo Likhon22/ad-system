@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"errors"
 	"net/http"
 
 	"github.com/go-playground/validator/v10"
@@ -46,17 +45,10 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		Role:     domain.Role(req.Role),
 	})
 	if err != nil {
-		switch {
-		case errors.Is(err, domain.ErrEmailAlreadyExists):
-			utils.WriteError(w, http.StatusConflict, "email already registered")
-		case errors.Is(err, domain.ErrInvalidRole):
-			utils.WriteError(w, http.StatusBadRequest, "role must be advertiser or publisher")
-		default:
-			utils.WriteError(w, http.StatusInternalServerError, "internal server error")
-		}
+		utils.ErrorHandler(w, err)
 		return
 	}
-	if err := utils.WriteJSON(w, r, "user created successfully", http.StatusCreated, user); err != nil {
+	if err := utils.WriteJSON(w, "user created successfully", http.StatusCreated, user); err != nil {
 		utils.WriteError(w, http.StatusInternalServerError, "Error creating student")
 		return
 	}

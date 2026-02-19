@@ -2,7 +2,10 @@ package utils
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
+
+	"github.com/likhon22/ad-system/auth-service/internal/domain"
 )
 
 type ErrorResponse struct {
@@ -18,6 +21,23 @@ func WriteError(w http.ResponseWriter, statusCode int, err string) {
 		Message: err,
 	}
 
-	json.NewEncoder(w).Encode(resp)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+	}
+
+}
+
+func ErrorHandler(w http.ResponseWriter, err error) {
+	if err != nil {
+		switch {
+		case errors.Is(err, domain.ErrEmailAlreadyExists):
+			WriteError(w, http.StatusConflict, "email already registered")
+		case errors.Is(err, domain.ErrInvalidRole):
+			WriteError(w, http.StatusBadRequest, "role must be advertiser or publisher")
+		default:
+			WriteError(w, http.StatusInternalServerError, "internal server error")
+		}
+
+	}
 
 }

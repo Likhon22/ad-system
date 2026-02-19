@@ -11,7 +11,7 @@ type response[T any] struct {
 	Success bool   `json:"success"`
 }
 
-func WriteJSON[T any](w http.ResponseWriter, r *http.Request, message string, statusCode int, data *T) error {
+func WriteJSON[T any](w http.ResponseWriter, message string, statusCode int, data *T) error {
 	w.Header().Set("Content-Type", "application/json")
 	res := &response[T]{
 		Message: message,
