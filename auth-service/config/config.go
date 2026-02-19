@@ -1,7 +1,7 @@
 package config
 
 import (
-	"log"
+	"fmt"
 	"os"
 	"sync"
 
@@ -12,44 +12,40 @@ type Config struct {
 	Version     string
 	ServiceName string
 	Addr        string
-	DBCnf       *DBConfig
+	DB          *DBConfig
 }
 
 var (
-	config *Config
-	once   sync.Once
+	instance *Config
+	once     sync.Once
 )
 
-func loadConfig() {
-	if err := godotenv.Load(); err != nil {
-		log.Fatal("no .env file found")
-	}
-	version := os.Getenv("VERSION")
-	serviceName := os.Getenv("SERVICE_NAME")
-	addr := os.Getenv("ADDR")
-	config = &Config{
-		Version:     version,
-		ServiceName: serviceName,
-		Addr:        addr,
-		DBCnf:       LoadDBConfig(),
-	}
-	validateMainConfig(config)
-}
-
 func GetConfig() *Config {
-	once.Do(loadConfig)
-	return config
-
+	once.Do(func() {
+		// .env is for local dev only — ignore error in production
+		godotenv.Load()
+		instance = &Config{
+			Version:     os.Getenv("VERSION"),
+			ServiceName: os.Getenv("SERVICE_NAME"),
+			Addr:        os.Getenv("ADDR"),
+			DB:          loadDBConfig(),
+		}
+		if err := instance.validate(); err != nil {
+			panic(fmt.Sprintf("invalid config: %v", err))
+		}
+	})
+	return instance
 }
 
-func validateMainConfig(cnf *Config) {
-	if cnf.Version == "" {
-		log.Fatal("Missing version")
+func (c *Config) validate() error {
+	if c.Version == "" {
+		return fmt.Errorf("VERSION is required")
 	}
-	if cnf.ServiceName == "" {
-		log.Fatal("Missing service name")
+	if c.ServiceName == "" {
+		return fmt.Errorf("SERVICE_NAME is required")
 	}
-	if cnf.Addr == "" {
-		log.Fatal("MIssing address/port")
+	if c.Addr == "" {
+		return fmt.Errorf("ADDR is required")
 	}
+	return nil
 }
