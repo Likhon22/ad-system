@@ -1,3 +1,9 @@
+// @title           Auth Service API
+// @version         1.0
+// @description     Authentication service for the Ad System
+// @host            localhost:5000
+// @BasePath        /api/v1
+
 package main
 
 import (

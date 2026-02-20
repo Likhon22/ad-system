@@ -20,7 +20,7 @@ func NewHandler(service inbound.AuthService, validator *utils.Validator) *AuthHa
 	}
 }
 
-type registerRequest struct {
+type RegisterRequest struct {
 	Email    string `json:"email"    validate:"required,email"`
 	Password string `json:"password" validate:"required,min=8"`
 	Role     string `json:"role"     validate:"required,oneof=advertiser publisher"`
@@ -32,16 +32,15 @@ type registerRequest struct {
 // @Tags         auth
 // @Accept       json
 // @Produce      json
-// @Param        request body registerRequest true "Register payload"
+// @Param        request body RegisterRequest true "Register payload"
 // @Success      201 {object} utils.Response[domain.User]
 // @Failure      400 {object} utils.ErrorResponse
 // @Failure      409 {object} utils.ErrorResponse
 // @Failure      500 {object} utils.ErrorResponse
 // @Router       /auth/register [post]
-
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 
-	var req registerRequest
+	var req RegisterRequest
 	if err := utils.ReadJson(w, r, &req); err != nil {
 		utils.WriteError(w, http.StatusBadRequest, err.Error())
 		return
@@ -61,7 +60,51 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := utils.WriteJSON(w, "user created successfully", http.StatusCreated, user); err != nil {
-		utils.WriteError(w, http.StatusInternalServerError, "Error creating student")
+		utils.WriteError(w, http.StatusInternalServerError, "Internal server error")
+		return
+	}
+
+}
+
+type LoginRequest struct {
+	Email    string `json:"email"    validate:"required,email"`
+	Password string `json:"password" validate:"required,min=8"`
+}
+
+// Login godoc
+// @Summary      Login a new user
+// @Description  Login a user account with email, password
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        request body LoginRequest true "Login payload"
+// @Success      201 {object} utils.Response[domain.User]
+// @Failure      400 {object} utils.ErrorResponse
+// @Failure      409 {object} utils.ErrorResponse
+// @Failure      500 {object} utils.ErrorResponse
+// @Router       /auth/login [post]
+func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
+
+	var req LoginRequest
+	if err := utils.ReadJson(w, r, &req); err != nil {
+		utils.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if err := h.validate.ValidateStruct(req); err != nil {
+		utils.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	user, err := h.authService.Login(r.Context(), inbound.LoginInput{
+		Email:    req.Email,
+		Password: req.Password,
+	})
+	if err != nil {
+		utils.ErrorHandler(w, err)
+		return
+	}
+	if err := utils.WriteJSON(w, "user logged successfully", http.StatusOK, user); err != nil {
+		utils.WriteError(w, http.StatusInternalServerError, "Internal server error")
 		return
 	}
 

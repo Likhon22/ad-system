@@ -4,6 +4,8 @@ import (
 	"net/http"
 
 	"github.com/likhon22/ad-system/auth-service/internal/adapter/inbound/http/handler"
+
+	_ "github.com/likhon22/ad-system/auth-service/docs"
 	httpSwagger "github.com/swaggo/http-swagger"
 )
 
@@ -11,6 +13,7 @@ func setupRouter(authHandler *handler.AuthHandler, healthHandler *handler.Health
 	mux := http.NewServeMux()
 	v1 := http.NewServeMux()
 	v1.HandleFunc("POST /auth/register", authHandler.Register)
+	v1.HandleFunc("POST /auth/login", authHandler.Login)
 	mux.HandleFunc("GET /healthz", healthHandler.Liveness)
 	mux.HandleFunc("GET /readyz", healthHandler.Readiness)
 	mux.Handle("/swagger/", httpSwagger.WrapHandler)

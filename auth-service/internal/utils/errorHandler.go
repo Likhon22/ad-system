@@ -32,8 +32,13 @@ func ErrorHandler(w http.ResponseWriter, err error) {
 		switch {
 		case errors.Is(err, domain.ErrEmailAlreadyExists):
 			WriteError(w, http.StatusConflict, "email already registered")
+
 		case errors.Is(err, domain.ErrInvalidRole):
 			WriteError(w, http.StatusBadRequest, "role must be advertiser or publisher")
+
+		case errors.Is(err, domain.ErrInvalidCredentials):
+			WriteError(w, http.StatusBadRequest, "invalid email or password")
+
 		default:
 			WriteError(w, http.StatusInternalServerError, "internal server error")
 		}

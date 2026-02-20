@@ -5,7 +5,7 @@ import (
 	"net/http"
 )
 
-type response[T any] struct {
+type Response[T any] struct {
 	Message string `json:"message"`
 	Data    *T     `json:"data,omitempty"`
 	Success bool   `json:"success"`
@@ -13,7 +13,7 @@ type response[T any] struct {
 
 func WriteJSON[T any](w http.ResponseWriter, message string, statusCode int, data *T) error {
 	w.Header().Set("Content-Type", "application/json")
-	res := &response[T]{
+	res := &Response[T]{
 		Message: message,
 		Data:    data,
 		Success: true,

@@ -12,7 +12,7 @@ import (
 )
 
 type authService struct {
-	userRepo outbound.UserRepository // interface — knows nothing about postgres
+	userRepo outbound.UserRepository
 }
 
 // Returns inbound.AuthService interface — handler never sees the concrete struct
@@ -47,5 +47,21 @@ func (s *authService) Register(ctx context.Context, input inbound.RegisterInput)
 	}
 
 	user.PasswordHash = "" // scrub before returning — never expose hash
+	return user, nil
+}
+
+func (s *authService) Login(ctx context.Context, input inbound.LoginInput) (*domain.User, error) {
+
+	user, err := s.userRepo.FindByEmail(ctx, input.Email)
+	if err != nil {
+		return nil, err
+	}
+	matched, err := utils.ComparePassword(input.Password, user.PasswordHash)
+	if err != nil {
+		return nil, err
+	}
+	if !matched {
+		return nil, domain.ErrInvalidCredentials
+	}
 	return user, nil
 }
