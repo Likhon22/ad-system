@@ -10,6 +10,7 @@ import (
 	"github.com/likhon22/ad-system/auth-service/internal/adapter/inbound/http/handler"
 	postgres "github.com/likhon22/ad-system/auth-service/internal/adapter/outbound/postgres"
 	"github.com/likhon22/ad-system/auth-service/internal/application"
+	"github.com/likhon22/ad-system/auth-service/internal/utils"
 )
 
 type App struct {
@@ -17,6 +18,7 @@ type App struct {
 }
 
 func NewApp(pool *pgxpool.Pool, cfg *config.Config) *App {
+	validate := utils.NewValidator()
 	// outbound adapters (real implementations)
 	userRepo := postgres.NewUserRepository(pool)
 
@@ -24,7 +26,7 @@ func NewApp(pool *pgxpool.Pool, cfg *config.Config) *App {
 	authSvc := application.NewAuthService(userRepo)
 
 	// inbound adapters (HTTP handlers — gets interfaces)
-	authHandler := handler.NewAuthHandler(authSvc)
+	authHandler := handler.NewHandler(authSvc, validate)
 
 	// wire routes
 	mux := setupRouter(authHandler)

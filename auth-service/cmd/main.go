@@ -10,7 +10,7 @@ import (
 
 func main() {
 	cfg := config.GetConfig()
-
+  
 	pool, err := postgres.NewPool(cfg.DB)
 	if err != nil {
 		log.Fatalf("cannot connect to database: %v", err)

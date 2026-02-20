@@ -3,7 +3,6 @@ package handler
 import (
 	"net/http"
 
-	"github.com/go-playground/validator/v10"
 	"github.com/likhon22/ad-system/auth-service/internal/domain"
 	"github.com/likhon22/ad-system/auth-service/internal/port/inbound"
 	"github.com/likhon22/ad-system/auth-service/internal/utils"
@@ -11,13 +10,13 @@ import (
 
 type AuthHandler struct {
 	authService inbound.AuthService
-	validate    *validator.Validate
+	validate    *utils.Validator
 }
 
-func NewAuthHandler(authService inbound.AuthService) *AuthHandler {
+func NewHandler(service inbound.AuthService, validator *utils.Validator) *AuthHandler {
 	return &AuthHandler{
-		authService: authService,
-		validate:    validator.New(),
+		authService: service,
+		validate:    validator,
 	}
 }
 
@@ -35,7 +34,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.validate.Struct(req); err != nil {
+	if err := h.validate.ValidateStruct(req); err != nil {
 		utils.WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
