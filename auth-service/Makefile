@@ -3,7 +3,7 @@ ifneq (,$(wildcard .env))
 	export
 endif
 
-.PHONY: run dev build lint tidy migrate-up migrate-down migrate-create migrate-force migrate-version
+.PHONY: run dev build lint tidy migrate-up migrate-down migrate-create migrate-force migrate-version swagger swagger-clean
 
 run:
 	go run ./cmd/main.go
@@ -19,6 +19,12 @@ lint:
 
 tidy:
 	go mod tidy
+
+swagger:
+	swag init -g cmd/main.go --output docs --parseDependency --parseInternal
+
+swagger-clean:
+	rm -rf docs/
 
 migrate-up:
 	migrate -path migrations -database "$(DB_URL)" up

@@ -17,10 +17,11 @@ type Config struct {
 
 var (
 	instance *Config
+	initErr  error
 	once     sync.Once
 )
 
-func GetConfig() *Config {
+func GetConfig() (*Config, error) {
 	once.Do(func() {
 		// .env is for local dev only — ignore error in production
 		_ = godotenv.Load()
@@ -30,11 +31,10 @@ func GetConfig() *Config {
 			Addr:        os.Getenv("ADDR"),
 			DB:          loadDBConfig(),
 		}
-		if err := instance.validate(); err != nil {
-			panic(fmt.Sprintf("invalid config: %v", err))
-		}
+		initErr = instance.validate()
+
 	})
-	return instance
+	return instance, initErr
 }
 
 func (c *Config) validate() error {

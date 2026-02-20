@@ -30,8 +30,9 @@ func NewApp(pool *pgxpool.Pool, cfg *config.Config) *App {
 	// inbound adapters (HTTP handlers — gets interfaces)
 	authHandler := handler.NewHandler(authSvc, validate)
 
+	healthHandler := handler.NewHealthHandler(pool)
 	// wire routes
-	mux := setupRouter(authHandler)
+	mux := setupRouter(authHandler, healthHandler)
 	wrappedMux := middleware.SetUpMiddleware(mux, mw)
 	return &App{
 		server: &http.Server{

@@ -9,8 +9,10 @@ import (
 )
 
 func main() {
-	cfg := config.GetConfig()
-  
+	cfg, err := config.GetConfig()
+	if err != nil {
+		log.Fatalf("invalid config: %v", err)
+	}
 	pool, err := postgres.NewPool(cfg.DB)
 	if err != nil {
 		log.Fatalf("cannot connect to database: %v", err)

@@ -26,6 +26,19 @@ type registerRequest struct {
 	Role     string `json:"role"     validate:"required,oneof=advertiser publisher"`
 }
 
+// Register godoc
+// @Summary      Register a new user
+// @Description  Creates a new user account with email, password and role
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        request body registerRequest true "Register payload"
+// @Success      201 {object} utils.Response[domain.User]
+// @Failure      400 {object} utils.ErrorResponse
+// @Failure      409 {object} utils.ErrorResponse
+// @Failure      500 {object} utils.ErrorResponse
+// @Router       /auth/register [post]
+
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 
 	var req registerRequest
