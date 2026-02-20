@@ -8,6 +8,9 @@ import (
 
 func setupRouter(authHandler *handler.AuthHandler) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /api/v1/auth/register", authHandler.Register)
+	v1 := http.NewServeMux()
+	v1.HandleFunc("POST /auth/register", authHandler.Register)
+
+	mux.Handle("/api/v1/", http.StripPrefix("/api/v1", v1))
 	return mux
 }

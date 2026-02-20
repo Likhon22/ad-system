@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/likhon22/ad-system/auth-service/config"
 	"github.com/likhon22/ad-system/auth-service/internal/adapter/inbound/http/handler"
+	"github.com/likhon22/ad-system/auth-service/internal/adapter/inbound/http/middleware"
 	postgres "github.com/likhon22/ad-system/auth-service/internal/adapter/outbound/postgres"
 	"github.com/likhon22/ad-system/auth-service/internal/application"
 	"github.com/likhon22/ad-system/auth-service/internal/utils"
@@ -18,6 +19,7 @@ type App struct {
 }
 
 func NewApp(pool *pgxpool.Pool, cfg *config.Config) *App {
+	mw := middleware.NewMiddleware()
 	validate := utils.NewValidator()
 	// outbound adapters (real implementations)
 	userRepo := postgres.NewUserRepository(pool)
@@ -30,11 +32,11 @@ func NewApp(pool *pgxpool.Pool, cfg *config.Config) *App {
 
 	// wire routes
 	mux := setupRouter(authHandler)
-
+	wrappedMux := middleware.SetUpMiddleware(mux, mw)
 	return &App{
 		server: &http.Server{
 			Addr:         cfg.Addr,
-			Handler:      mux,
+			Handler:      wrappedMux,
 			ReadTimeout:  10 * time.Second,
 			WriteTimeout: 10 * time.Second,
 			IdleTimeout:  30 * time.Second,
