@@ -19,7 +19,7 @@ type LoginInput struct {
 }
 type LoginResponse struct {
 	AccessToken  string       `json:"access_token"`
-	RefreshToken string       `json:"refresh_token"`
+	RefreshToken string       `json:"-"`
 	User         *UserSummary `json:"user"`
 }
 
@@ -31,4 +31,6 @@ type UserSummary struct {
 type AuthService interface {
 	Register(ctx context.Context, input RegisterInput) (*domain.User, error)
 	Login(ctx context.Context, input LoginInput) (LoginResponse, error)
+	RefreshToken(ctx context.Context, token string) (LoginResponse, error)
+	GetMe(ctx context.Context, email string) (*domain.User, error)
 }

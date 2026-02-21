@@ -39,8 +39,9 @@ func NewApp(pool *pgxpool.Pool, cfg *config.Config) *App {
 	authHandler := handler.NewHandler(authSvc, validate, cfg.Auth.RefreshTokenDuration, cfg.IsProduction)
 
 	healthHandler := handler.NewHealthHandler(pool)
+
 	// wire routes
-	mux := setupRouter(authHandler, healthHandler)
+	mux := setupRouter(authHandler, healthHandler, tokenMaker)
 	wrappedMux := middleware.SetUpMiddleware(mux, mw)
 	return &App{
 		server: &http.Server{

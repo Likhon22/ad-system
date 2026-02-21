@@ -115,3 +115,38 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 }
+
+func (h *AuthHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
+
+	refreshToken, err := utils.GetRefreshTokenCookie(r)
+	if err != nil {
+		utils.WriteError(w, http.StatusUnauthorized, "missing or invalid token")
+		return
+	}
+	result, err := h.authService.RefreshToken(r.Context(), refreshToken)
+	if err != nil {
+		utils.ErrorHandler(w, err)
+		return
+	}
+	if err := utils.WriteJSON(w, "token refreshed successfully", http.StatusOK, &result); err != nil {
+		utils.WriteError(w, http.StatusInternalServerError, "Internal server error")
+		return
+	}
+}
+func (h *AuthHandler) GetMe(w http.ResponseWriter, r *http.Request) {
+
+	claims, ok := utils.GetClaims(r.Context())
+	if !ok {
+		utils.WriteError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	user, err := h.authService.GetMe(r.Context(), claims.Email)
+	if err != nil {
+		utils.ErrorHandler(w, err)
+		return
+	}
+	if err := utils.WriteJSON(w, "user fetched successfully", http.StatusOK, user); err != nil {
+		utils.WriteError(w, http.StatusInternalServerError, "Internal server error")
+		return
+	}
+}

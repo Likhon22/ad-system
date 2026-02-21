@@ -89,3 +89,32 @@ func (s *authService) Login(ctx context.Context, input inbound.LoginInput) (inbo
 		},
 	}, nil
 }
+
+func (s *authService) RefreshToken(ctx context.Context, token string) (inbound.LoginResponse, error) {
+
+	verified, err := s.tokenMaker.VerifyRefreshToken(token)
+	if err != nil {
+		return inbound.LoginResponse{}, err
+	}
+	newToken, err := s.tokenMaker.CreateAccessToken(verified.UserID, verified.Role, verified.Email)
+	if err != nil {
+		return inbound.LoginResponse{}, err
+	}
+	return inbound.LoginResponse{
+		User: &inbound.UserSummary{
+			ID:    verified.UserID,
+			Email: verified.Email,
+			Role:  verified.Role,
+		},
+		AccessToken: newToken,
+	}, nil
+}
+func (s *authService) GetMe(ctx context.Context, email string) (*domain.User, error) {
+
+	user, err := s.userRepo.FindByEmail(ctx, email)
+	if err != nil {
+		return nil, err
+	}
+	user.PasswordHash = ""
+	return user, nil
+}

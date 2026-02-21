@@ -73,7 +73,7 @@ func (m *JWTMaker) verifyToken(tokenStr string, secret string) (*outbound.Claims
 		return nil, errors.New("invalid token claims")
 	}
 	return &outbound.Claims{
-		UserId: claims.UserID,
+		UserID: claims.UserID,
 		Email:  claims.Email,
 		Role:   claims.Role,
 	}, nil

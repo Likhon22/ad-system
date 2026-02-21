@@ -6,7 +6,7 @@ import (
 )
 
 type Claims struct {
-	UserId uuid.UUID
+	UserID uuid.UUID
 	Email  string
 	Role   domain.Role
 }
