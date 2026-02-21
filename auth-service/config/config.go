@@ -13,6 +13,7 @@ type Config struct {
 	ServiceName string
 	Addr        string
 	DB          *DBConfig
+	Auth        *AuthConfig
 }
 
 var (
@@ -31,6 +32,12 @@ func GetConfig() (*Config, error) {
 			Addr:        os.Getenv("ADDR"),
 			DB:          loadDBConfig(),
 		}
+		authCfg, err := loadAuthConfig()
+		if err != nil {
+			initErr = err
+			return
+		}
+		instance.Auth = authCfg
 		initErr = instance.validate()
 
 	})

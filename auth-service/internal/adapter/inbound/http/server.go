@@ -9,6 +9,7 @@ import (
 	"github.com/likhon22/ad-system/auth-service/config"
 	"github.com/likhon22/ad-system/auth-service/internal/adapter/inbound/http/handler"
 	"github.com/likhon22/ad-system/auth-service/internal/adapter/inbound/http/middleware"
+	"github.com/likhon22/ad-system/auth-service/internal/adapter/outbound/jwt"
 	postgres "github.com/likhon22/ad-system/auth-service/internal/adapter/outbound/postgres"
 	"github.com/likhon22/ad-system/auth-service/internal/application"
 	"github.com/likhon22/ad-system/auth-service/internal/utils"
@@ -25,10 +26,17 @@ func NewApp(pool *pgxpool.Pool, cfg *config.Config) *App {
 	userRepo := postgres.NewUserRepository(pool)
 
 	// application (business logic — gets interfaces, not real implementations)
-	authSvc := application.NewAuthService(userRepo)
+	tokenMaker := jwt.NewJWTMaker(
+		cfg.Auth.JWTAccessSecret,
+		cfg.Auth.JWTRefreshSecret,
+		cfg.Auth.AccessTokenDuration,
+		cfg.Auth.RefreshTokenDuration,
+	)
+
+	authSvc := application.NewAuthService(userRepo, tokenMaker)
 
 	// inbound adapters (HTTP handlers — gets interfaces)
-	authHandler := handler.NewHandler(authSvc, validate)
+	authHandler := handler.NewHandler(authSvc, validate, cfg.Auth.RefreshTokenDuration)
 
 	healthHandler := handler.NewHealthHandler(pool)
 	// wire routes

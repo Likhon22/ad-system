@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/likhon22/ad-system/auth-service/internal/domain"
 	"github.com/likhon22/ad-system/auth-service/internal/port/inbound"
@@ -9,14 +10,16 @@ import (
 )
 
 type AuthHandler struct {
-	authService inbound.AuthService
-	validate    *utils.Validator
+	authService     inbound.AuthService
+	validate        *utils.Validator
+	refreshDuration time.Duration
 }
 
-func NewHandler(service inbound.AuthService, validator *utils.Validator) *AuthHandler {
+func NewHandler(service inbound.AuthService, validator *utils.Validator, refreshDuration time.Duration) *AuthHandler {
 	return &AuthHandler{
-		authService: service,
-		validate:    validator,
+		authService:     service,
+		validate:        validator,
+		refreshDuration: refreshDuration,
 	}
 }
 
@@ -72,15 +75,15 @@ type LoginRequest struct {
 }
 
 // Login godoc
-// @Summary      Login a new user
-// @Description  Login a user account with email, password
+// @Summary      Login a user
+// @Description  Login with email and password. Returns access token in body, refresh token in httpOnly cookie.
 // @Tags         auth
 // @Accept       json
 // @Produce      json
 // @Param        request body LoginRequest true "Login payload"
-// @Success      201 {object} utils.Response[domain.User]
+// @Success      200 {object} utils.Response[inbound.LoginResponse]
 // @Failure      400 {object} utils.ErrorResponse
-// @Failure      409 {object} utils.ErrorResponse
+// @Failure      401 {object} utils.ErrorResponse
 // @Failure      500 {object} utils.ErrorResponse
 // @Router       /auth/login [post]
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
@@ -95,7 +98,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		utils.WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	user, err := h.authService.Login(r.Context(), inbound.LoginInput{
+	result, err := h.authService.Login(r.Context(), inbound.LoginInput{
 		Email:    req.Email,
 		Password: req.Password,
 	})
@@ -103,7 +106,8 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		utils.ErrorHandler(w, err)
 		return
 	}
-	if err := utils.WriteJSON(w, "user logged successfully", http.StatusOK, user); err != nil {
+	utils.SetRefreshTokenCookie(w, result.RefreshToken, h.refreshDuration)
+	if err := utils.WriteJSON(w, "user logged successfully", http.StatusOK, &result); err != nil {
 		utils.WriteError(w, http.StatusInternalServerError, "Internal server error")
 		return
 	}

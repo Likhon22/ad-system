@@ -12,12 +12,13 @@ import (
 )
 
 type authService struct {
-	userRepo outbound.UserRepository
+	userRepo   outbound.UserRepository
+	tokenMaker outbound.TokenMaker
 }
 
 // Returns inbound.AuthService interface — handler never sees the concrete struct
-func NewAuthService(userRepo outbound.UserRepository) inbound.AuthService {
-	return &authService{userRepo: userRepo}
+func NewAuthService(userRepo outbound.UserRepository, tokenMaker outbound.TokenMaker) inbound.AuthService {
+	return &authService{userRepo: userRepo, tokenMaker: tokenMaker}
 }
 
 func (s *authService) Register(ctx context.Context, input inbound.RegisterInput) (*domain.User, error) {
@@ -46,22 +47,45 @@ func (s *authService) Register(ctx context.Context, input inbound.RegisterInput)
 		return nil, err
 	}
 
-	user.PasswordHash = "" // scrub before returning — never expose hash
+	user.PasswordHash = ""
 	return user, nil
 }
 
-func (s *authService) Login(ctx context.Context, input inbound.LoginInput) (*domain.User, error) {
+func (s *authService) Login(ctx context.Context, input inbound.LoginInput) (inbound.LoginResponse, error) {
 
 	user, err := s.userRepo.FindByEmail(ctx, input.Email)
 	if err != nil {
-		return nil, err
+		return inbound.LoginResponse{}, err
+
 	}
+
 	matched, err := utils.ComparePassword(input.Password, user.PasswordHash)
 	if err != nil {
-		return nil, err
+		return inbound.LoginResponse{}, err
+
 	}
 	if !matched {
-		return nil, domain.ErrInvalidCredentials
+		return inbound.LoginResponse{}, domain.ErrInvalidCredentials
+
 	}
-	return user, nil
+
+	accessToken, err := s.tokenMaker.CreateAccessToken(user.ID, user.Role, user.Email)
+	if err != nil {
+		return inbound.LoginResponse{}, err
+	}
+
+	refreshToken, err := s.tokenMaker.CreateRefreshToken(user.ID, user.Role, user.Email)
+	if err != nil {
+		return inbound.LoginResponse{}, err
+	}
+
+	return inbound.LoginResponse{
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		User: &inbound.UserSummary{
+			ID:    user.ID,
+			Email: user.Email,
+			Role:  user.Role,
+		},
+	}, nil
 }
