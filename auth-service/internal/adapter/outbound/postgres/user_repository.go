@@ -22,7 +22,7 @@ func NewUserRepository(pool *pgxpool.Pool) outbound.UserRepository {
 func (r *userRepository) Create(ctx context.Context, user *domain.User) error {
 
 	_, err := r.pool.Exec(ctx, queryCreateUser,
-		user.ID, user.Email, user.Name, user.PasswordHash,
+		user.ID, user.Email, user.Name, user.PasswordHash, user.Provider,
 		user.Role, user.Status, user.CreatedAt, user.UpdatedAt,
 	)
 	if err != nil {
@@ -40,7 +40,7 @@ func (r *userRepository) FindByEmail(ctx context.Context, email string) (*domain
 
 	user := &domain.User{}
 	err := r.pool.QueryRow(ctx, queryFindByEmail, email).Scan(
-		&user.ID, &user.Email, &user.Name, &user.PasswordHash,
+		&user.ID, &user.Email, &user.Name, &user.PasswordHash, &user.Provider,
 		&user.Role, &user.Status, &user.CreatedAt, &user.UpdatedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {

@@ -60,6 +60,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		Email:    req.Email,
 		Password: req.Password,
 		Role:     domain.Role(req.Role),
+		Name:     req.Name,
 	})
 	if err != nil {
 		utils.ErrorHandler(w, err)
