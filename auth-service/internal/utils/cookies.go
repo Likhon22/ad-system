@@ -7,26 +7,25 @@ import (
 
 const refreshTokenCookieName = "refresh_token"
 
-func SetRefreshTokenCookie(w http.ResponseWriter, token string, duration time.Duration) {
-
+func SetRefreshTokenCookie(w http.ResponseWriter, token string, duration time.Duration, isProduction bool) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     refreshTokenCookieName,
 		Value:    token,
 		Path:     "/",
 		MaxAge:   int(duration.Seconds()),
-		Secure:   false,
+		HttpOnly: isProduction,
+		Secure:   isProduction,
 		SameSite: http.SameSiteLaxMode,
 	})
-
 }
-func ClearRefreshTokenCookie(w http.ResponseWriter) {
+func ClearRefreshTokenCookie(w http.ResponseWriter, isProduction bool) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     refreshTokenCookieName,
 		Value:    "",
 		Path:     "/",
 		MaxAge:   -1,
-		HttpOnly: true,
-		Secure:   false,
+		HttpOnly: isProduction,
+		Secure:   isProduction,
 		SameSite: http.SameSiteLaxMode,
 	})
 }

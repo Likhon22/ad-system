@@ -13,13 +13,15 @@ type AuthHandler struct {
 	authService     inbound.AuthService
 	validate        *utils.Validator
 	refreshDuration time.Duration
+	isProduction    bool
 }
 
-func NewHandler(service inbound.AuthService, validator *utils.Validator, refreshDuration time.Duration) *AuthHandler {
+func NewHandler(service inbound.AuthService, validator *utils.Validator, refreshDuration time.Duration, isProduction bool) *AuthHandler {
 	return &AuthHandler{
 		authService:     service,
 		validate:        validator,
 		refreshDuration: refreshDuration,
+		isProduction:    isProduction,
 	}
 }
 
@@ -106,7 +108,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		utils.ErrorHandler(w, err)
 		return
 	}
-	utils.SetRefreshTokenCookie(w, result.RefreshToken, h.refreshDuration)
+	utils.SetRefreshTokenCookie(w, result.RefreshToken, h.refreshDuration, h.isProduction)
 	if err := utils.WriteJSON(w, "user logged successfully", http.StatusOK, &result); err != nil {
 		utils.WriteError(w, http.StatusInternalServerError, "Internal server error")
 		return

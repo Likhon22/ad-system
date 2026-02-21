@@ -36,7 +36,7 @@ func NewApp(pool *pgxpool.Pool, cfg *config.Config) *App {
 	authSvc := application.NewAuthService(userRepo, tokenMaker)
 
 	// inbound adapters (HTTP handlers — gets interfaces)
-	authHandler := handler.NewHandler(authSvc, validate, cfg.Auth.RefreshTokenDuration)
+	authHandler := handler.NewHandler(authSvc, validate, cfg.Auth.RefreshTokenDuration, cfg.IsProduction)
 
 	healthHandler := handler.NewHealthHandler(pool)
 	// wire routes

@@ -9,11 +9,12 @@ import (
 )
 
 type Config struct {
-	Version     string
-	ServiceName string
-	Addr        string
-	DB          *DBConfig
-	Auth        *AuthConfig
+	Version      string
+	ServiceName  string
+	Addr         string
+	IsProduction bool
+	DB           *DBConfig
+	Auth         *AuthConfig
 }
 
 var (
@@ -27,10 +28,11 @@ func GetConfig() (*Config, error) {
 		// .env is for local dev only — ignore error in production
 		_ = godotenv.Load()
 		instance = &Config{
-			Version:     os.Getenv("VERSION"),
-			ServiceName: os.Getenv("SERVICE_NAME"),
-			Addr:        os.Getenv("ADDR"),
-			DB:          loadDBConfig(),
+			Version:      os.Getenv("VERSION"),
+			ServiceName:  os.Getenv("SERVICE_NAME"),
+			Addr:         os.Getenv("ADDR"),
+			IsProduction: os.Getenv("ENV") == "production",
+			DB:           loadDBConfig(),
 		}
 		authCfg, err := loadAuthConfig()
 		if err != nil {
