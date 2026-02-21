@@ -40,6 +40,8 @@ func ErrorHandler(w http.ResponseWriter, err error) {
 			WriteError(w, http.StatusUnauthorized, "invalid email or password")
 		case errors.Is(err, domain.ErrUserSuspended):
 			WriteError(w, http.StatusForbidden, "account is suspended")
+		case errors.Is(err, domain.ErrOAuthUser):
+			WriteError(w, http.StatusBadRequest, "this account uses Google login, please sign in with Google")
 		default:
 			WriteError(w, http.StatusInternalServerError, "internal server error")
 		}

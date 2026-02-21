@@ -8,4 +8,5 @@ var (
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrUserSuspended      = errors.New("user is suspended")
 	ErrInvalidRole        = errors.New("invalid role")
+	ErrOAuthUser          = errors.New("account uses OAuth login")
 )

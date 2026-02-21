@@ -21,7 +21,7 @@ func NewAuthService(userRepo outbound.UserRepository, tokenMaker outbound.TokenM
 	return &authService{userRepo: userRepo, tokenMaker: tokenMaker}
 }
 
-func (s *authService) Register(ctx context.Context, input inbound.RegisterInput) (*domain.User, error) {
+func (s *authService) Register(ctx context.Context, input inbound.RegisterInput) (*inbound.UserSummary, error) {
 
 	if input.Role != domain.RoleAdvertiser && input.Role != domain.RolePublisher {
 		return nil, domain.ErrInvalidRole
@@ -36,7 +36,9 @@ func (s *authService) Register(ctx context.Context, input inbound.RegisterInput)
 	user := &domain.User{
 		ID:           uuid.New(),
 		Email:        input.Email,
+		Name:         input.Name,
 		PasswordHash: hash,
+		Provider:     "local",
 		Role:         input.Role,
 		Status:       domain.StatusActive,
 		CreatedAt:    now,
@@ -47,8 +49,13 @@ func (s *authService) Register(ctx context.Context, input inbound.RegisterInput)
 		return nil, err
 	}
 
-	user.PasswordHash = ""
-	return user, nil
+	return &inbound.UserSummary{
+		ID:     user.ID,
+		Email:  user.Email,
+		Role:   user.Role,
+		Name:   user.Name,
+		Status: user.Status,
+	}, nil
 }
 
 func (s *authService) Login(ctx context.Context, input inbound.LoginInput) (inbound.LoginResponse, error) {
@@ -57,6 +64,12 @@ func (s *authService) Login(ctx context.Context, input inbound.LoginInput) (inbo
 	if err != nil {
 		return inbound.LoginResponse{}, err
 
+	}
+	if user.Provider != "local" {
+		return inbound.LoginResponse{}, domain.ErrOAuthUser
+	}
+	if user.Status != domain.StatusActive {
+		return inbound.LoginResponse{}, domain.ErrUserSuspended
 	}
 
 	matched, err := utils.ComparePassword(input.Password, user.PasswordHash)
@@ -83,9 +96,11 @@ func (s *authService) Login(ctx context.Context, input inbound.LoginInput) (inbo
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		User: &inbound.UserSummary{
-			ID:    user.ID,
-			Email: user.Email,
-			Role:  user.Role,
+			ID:     user.ID,
+			Email:  user.Email,
+			Role:   user.Role,
+			Name:   user.Name,
+			Status: user.Status,
 		},
 	}, nil
 }
@@ -109,12 +124,19 @@ func (s *authService) RefreshToken(ctx context.Context, token string) (inbound.L
 		AccessToken: newToken,
 	}, nil
 }
-func (s *authService) GetMe(ctx context.Context, email string) (*domain.User, error) {
+func (s *authService) GetMe(ctx context.Context, email string) (*inbound.UserSummary, error) {
 
 	user, err := s.userRepo.FindByEmail(ctx, email)
 	if err != nil {
 		return nil, err
 	}
-	user.PasswordHash = ""
-	return user, nil
+
+	return &inbound.UserSummary{
+
+		ID:     user.ID,
+		Email:  user.Email,
+		Role:   user.Role,
+		Name:   user.Name,
+		Status: user.Status,
+	}, nil
 }
