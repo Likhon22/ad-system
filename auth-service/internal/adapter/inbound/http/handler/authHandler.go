@@ -25,6 +25,12 @@ func NewHandler(service inbound.AuthService, validator *utils.Validator, refresh
 	}
 }
 
+const (
+	oauthStateCookie = "oauth_state"
+	oauthFlowCookie  = "oauth_flow"
+	oauthRoleCookie  = "oauth_role"
+)
+
 type RegisterRequest struct {
 	Email    string `json:"email"    validate:"required,email"`
 	Password string `json:"password" validate:"required,min=8"`
@@ -148,6 +154,113 @@ func (h *AuthHandler) GetMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := utils.WriteJSON(w, "user fetched successfully", http.StatusOK, user); err != nil {
+		utils.WriteError(w, http.StatusInternalServerError, "Internal server error")
+		return
+	}
+}
+
+func (h *AuthHandler) GoogleInitiate(w http.ResponseWriter, r *http.Request) {
+	flow := r.URL.Query().Get("flow")
+	if flow != "login" && flow != "register" {
+		utils.WriteError(w, http.StatusBadRequest, "flow must be 'login' or 'register'")
+		return
+	}
+
+	role := r.URL.Query().Get("role")
+	if flow == "register" && role != "advertiser" && role != "publisher" {
+		utils.WriteError(w, http.StatusBadRequest, "role must be 'advertiser' or 'publisher'")
+		return
+	}
+	authURL, state, err := h.authService.GoogleInitiate(r.Context())
+	if err != nil {
+		utils.WriteError(w, http.StatusInternalServerError, "failed to initiate Google login")
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     oauthStateCookie,
+		Value:    state,
+		MaxAge:   300,
+		HttpOnly: true,
+		Secure:   h.isProduction,
+		SameSite: http.SameSiteLaxMode,
+		Path:     "/",
+	})
+	http.SetCookie(w, &http.Cookie{
+		Name:     oauthFlowCookie,
+		Value:    flow,
+		MaxAge:   300,
+		HttpOnly: true,
+		Secure:   h.isProduction,
+		SameSite: http.SameSiteLaxMode,
+		Path:     "/",
+	})
+	if flow == "register" {
+		http.SetCookie(w, &http.Cookie{
+			Name:     oauthRoleCookie,
+			Value:    role,
+			MaxAge:   300,
+			HttpOnly: true,
+			Secure:   h.isProduction,
+			SameSite: http.SameSiteLaxMode,
+			Path:     "/",
+		})
+	}
+	http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
+}
+func (h *AuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
+	code := r.URL.Query().Get("code")
+	state := r.URL.Query().Get("state")
+
+	// Read cookies
+	stateCookie, err := r.Cookie(oauthStateCookie)
+	if err != nil {
+		utils.WriteError(w, http.StatusBadRequest, "missing state cookie")
+		return
+	}
+	flowCookie, err := r.Cookie(oauthFlowCookie)
+	if err != nil {
+		utils.WriteError(w, http.StatusBadRequest, "missing flow cookie")
+		return
+	}
+
+	roleCookie := ""
+	if flowCookie.Value == "register" {
+		rc, err := r.Cookie(oauthRoleCookie)
+		if err != nil {
+			utils.WriteError(w, http.StatusBadRequest, "missing role cookie")
+			return
+		}
+		roleCookie = rc.Value
+	}
+
+	// Delete all cookies immediately — single use
+	for _, name := range []string{oauthStateCookie, oauthFlowCookie, oauthRoleCookie} {
+		http.SetCookie(w, &http.Cookie{
+			Name:     name,
+			Value:    "",
+			MaxAge:   -1,
+			HttpOnly: true,
+			Secure:   h.isProduction,
+			SameSite: http.SameSiteLaxMode,
+			Path:     "/",
+		})
+	}
+
+	result, err := h.authService.GoogleCallback(
+		r.Context(),
+		code,
+		state,
+		stateCookie.Value,
+		flowCookie.Value,
+		domain.Role(roleCookie),
+	)
+	if err != nil {
+		utils.ErrorHandler(w, err)
+		return
+	}
+
+	utils.SetRefreshTokenCookie(w, result.RefreshToken, h.refreshDuration, h.isProduction)
+	if err := utils.WriteJSON(w, "logged in successfully", http.StatusOK, &result); err != nil {
 		utils.WriteError(w, http.StatusInternalServerError, "Internal server error")
 		return
 	}

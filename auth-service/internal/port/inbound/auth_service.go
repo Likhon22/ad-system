@@ -36,4 +36,6 @@ type AuthService interface {
 	Login(ctx context.Context, input LoginInput) (LoginResponse, error)
 	RefreshToken(ctx context.Context, token string) (LoginResponse, error)
 	GetMe(ctx context.Context, email string) (*UserSummary, error)
+	GoogleInitiate(ctx context.Context) (authURL string, state string, err error)
+	GoogleCallback(ctx context.Context, code, state, storedState, flow string, role domain.Role) (LoginResponse, error)
 }

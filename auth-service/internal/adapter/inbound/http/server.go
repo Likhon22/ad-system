@@ -10,6 +10,7 @@ import (
 	"github.com/likhon22/ad-system/auth-service/internal/adapter/inbound/http/handler"
 	"github.com/likhon22/ad-system/auth-service/internal/adapter/inbound/http/middleware"
 	"github.com/likhon22/ad-system/auth-service/internal/adapter/outbound/jwt"
+	"github.com/likhon22/ad-system/auth-service/internal/adapter/outbound/oauth"
 	postgres "github.com/likhon22/ad-system/auth-service/internal/adapter/outbound/postgres"
 	"github.com/likhon22/ad-system/auth-service/internal/application"
 	"github.com/likhon22/ad-system/auth-service/internal/utils"
@@ -32,8 +33,8 @@ func NewApp(pool *pgxpool.Pool, cfg *config.Config) *App {
 		cfg.Auth.AccessTokenDuration,
 		cfg.Auth.RefreshTokenDuration,
 	)
-
-	authSvc := application.NewAuthService(userRepo, tokenMaker)
+	authOAuth := oauth.NewGoogleOAuthProvider(cfg.Auth.GoogleClientID, cfg.Auth.GoogleClientSecret, cfg.Auth.GoogleRedirectURL)
+	authSvc := application.NewAuthService(userRepo, tokenMaker, authOAuth)
 
 	// inbound adapters (HTTP handlers — gets interfaces)
 	authHandler := handler.NewHandler(authSvc, validate, cfg.Auth.RefreshTokenDuration, cfg.IsProduction)

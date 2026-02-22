@@ -17,6 +17,8 @@ func setupRouter(authHandler *handler.AuthHandler, healthHandler *handler.Health
 	v1.HandleFunc("POST /auth/register", authHandler.Register)
 	v1.HandleFunc("POST /auth/login", authHandler.Login)
 	v1.HandleFunc("POST /auth/refresh-token", authHandler.RefreshToken)
+	v1.HandleFunc("GET /auth/google", authHandler.GoogleInitiate)
+	v1.HandleFunc("GET /auth/google/callback", authHandler.GoogleCallback)
 	//protected route
 	requireAuth := middleware.RequiredAuth(tokenMaker)
 	v1.Handle("GET /auth/me", requireAuth(http.HandlerFunc(authHandler.GetMe)))

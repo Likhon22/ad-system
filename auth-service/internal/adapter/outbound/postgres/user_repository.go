@@ -64,9 +64,6 @@ func (r *userRepository) Create(ctx context.Context, user *domain.User) (*domain
 func (r *userRepository) FindByEmail(ctx context.Context, email string) (*domain.User, error) {
 	var user domain.User
 
-	// These three are nullable in the DB — we must scan into *string not string.
-	// WHY *string? pgx cannot scan SQL NULL into a Go string. It panics.
-	// With *string, NULL → nil pointer, which we then safely check below.
 	var passwordHash *string
 	var providerID *string
 	var avatarURL *string

@@ -2,6 +2,10 @@ package application
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -12,13 +16,17 @@ import (
 )
 
 type authService struct {
-	userRepo   outbound.UserRepository
-	tokenMaker outbound.TokenMaker
+	userRepo      outbound.UserRepository
+	tokenMaker    outbound.TokenMaker
+	oauthProvider outbound.OAuthProvider
 }
 
-// Returns inbound.AuthService interface — handler never sees the concrete struct
-func NewAuthService(userRepo outbound.UserRepository, tokenMaker outbound.TokenMaker) inbound.AuthService {
-	return &authService{userRepo: userRepo, tokenMaker: tokenMaker}
+func NewAuthService(userRepo outbound.UserRepository, tokenMaker outbound.TokenMaker, oauthProvider outbound.OAuthProvider) inbound.AuthService {
+	return &authService{
+		userRepo:      userRepo,
+		tokenMaker:    tokenMaker,
+		oauthProvider: oauthProvider,
+	}
 }
 
 func (s *authService) Register(ctx context.Context, input inbound.RegisterInput) (*inbound.UserSummary, error) {
@@ -138,5 +146,100 @@ func (s *authService) GetMe(ctx context.Context, email string) (*inbound.UserSum
 		Role:   user.Role,
 		Name:   user.Name,
 		Status: user.Status,
+	}, nil
+}
+
+func (s *authService) GoogleInitiate(ctx context.Context) (string, string, error) {
+	stateBytes := make([]byte, 32)
+	if _, err := rand.Read(stateBytes); err != nil {
+		return "", "", fmt.Errorf("failed to generate state: %w", err)
+	}
+	state := base64.URLEncoding.EncodeToString(stateBytes)
+	authURL := s.oauthProvider.BuildAuthURL(state)
+	return authURL, state, nil
+}
+
+func (s *authService) GoogleCallback(ctx context.Context, code, state, storedState, flow string, role domain.Role) (inbound.LoginResponse, error) {
+	// CSRF check — state must match what we stored in cookie
+	if code == "" || state == "" || storedState == "" || state != storedState {
+		return inbound.LoginResponse{}, domain.ErrInvalidCredentials
+	}
+
+	googleUser, err := s.oauthProvider.ExchangeCode(ctx, code)
+	if err != nil {
+		return inbound.LoginResponse{}, fmt.Errorf("OAuth exchange failed: %w", err)
+	}
+
+	user, err := s.userRepo.FindByProviderID(ctx, "google", googleUser.Sub)
+	userExists := err == nil
+	userNotFound := errors.Is(err, domain.ErrUserNotFound)
+
+	if err != nil && !userNotFound {
+		return inbound.LoginResponse{}, err
+	}
+
+	if flow == "login" {
+		if userNotFound {
+			return inbound.LoginResponse{}, domain.ErrUserNotFound
+		}
+	} else {
+
+		if userExists {
+			return inbound.LoginResponse{}, domain.ErrEmailAlreadyExists
+		}
+
+		// Validate role
+		if role != domain.RoleAdvertiser && role != domain.RolePublisher {
+			return inbound.LoginResponse{}, domain.ErrInvalidRole
+		}
+
+		existing, emailErr := s.userRepo.FindByEmail(ctx, googleUser.Email)
+		if emailErr == nil && existing.Provider == "local" {
+			return inbound.LoginResponse{}, domain.ErrEmailConflict
+		}
+
+		// Create new user
+		now := time.Now()
+		newUser := &domain.User{
+			ID:         uuid.New(),
+			Email:      googleUser.Email,
+			Name:       googleUser.Name,
+			AvatarURL:  googleUser.Picture,
+			Provider:   "google",
+			ProviderID: googleUser.Sub,
+			Role:       role,
+			Status:     domain.StatusActive,
+			CreatedAt:  now,
+			UpdatedAt:  now,
+		}
+		user, err = s.userRepo.Create(ctx, newUser)
+		if err != nil {
+			return inbound.LoginResponse{}, err
+		}
+	}
+
+	if user.Status != domain.StatusActive {
+		return inbound.LoginResponse{}, domain.ErrUserSuspended
+	}
+
+	accessToken, err := s.tokenMaker.CreateAccessToken(user.ID, user.Role, user.Email)
+	if err != nil {
+		return inbound.LoginResponse{}, err
+	}
+	refreshToken, err := s.tokenMaker.CreateRefreshToken(user.ID, user.Role, user.Email)
+	if err != nil {
+		return inbound.LoginResponse{}, err
+	}
+
+	return inbound.LoginResponse{
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		User: &inbound.UserSummary{
+			ID:     user.ID,
+			Email:  user.Email,
+			Role:   user.Role,
+			Name:   user.Name,
+			Status: user.Status,
+		},
 	}, nil
 }
