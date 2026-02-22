@@ -289,3 +289,12 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
+
+func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+
+	utils.ClearRefreshTokenCookie(w, h.isProduction)
+	if err := utils.WriteMessage(w, "logout successfully", http.StatusOK); err != nil {
+		utils.WriteError(w, http.StatusInternalServerError, "Internal server error")
+		return
+	}
+}
