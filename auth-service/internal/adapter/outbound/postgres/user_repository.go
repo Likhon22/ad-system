@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -140,4 +142,13 @@ func (r *userRepository) FindByProviderID(ctx context.Context, provider, provide
 	}
 
 	return &user, nil
+}
+
+func (r *userRepository) UpdatePassword(ctx context.Context, userID uuid.UUID, passwordHash string) error {
+	now := time.Now()
+	_, err := r.pool.Exec(ctx, queryUpdatePassword, passwordHash, now, userID)
+	if err != nil {
+		return fmt.Errorf("userRepository.UpdatePassword: %w", err)
+	}
+	return nil
 }

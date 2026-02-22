@@ -243,3 +243,32 @@ func (s *authService) GoogleCallback(ctx context.Context, code, state, storedSta
 		},
 	}, nil
 }
+
+func (s *authService) ChangePassword(ctx context.Context, email, currentPassword, newPassword string) error {
+	user, err := s.userRepo.FindByEmail(ctx, email)
+	if err != nil {
+		return err
+	}
+	if user.Provider != "local" {
+		return domain.ErrOAuthUser
+	}
+	matched, err := utils.ComparePassword(currentPassword, user.PasswordHash)
+	if err != nil {
+		return err
+	}
+	if !matched {
+		return domain.ErrInvalidCredentials
+	}
+	samePassword, err := utils.ComparePassword(newPassword, user.PasswordHash)
+	if err != nil {
+		return err
+	}
+	if samePassword {
+		return domain.ErrSamePassword
+	}
+	newHash, err := utils.HashPassword(newPassword)
+	if err != nil {
+		return err
+	}
+	return s.userRepo.UpdatePassword(ctx, user.ID, newHash)
+}

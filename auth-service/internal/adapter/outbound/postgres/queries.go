@@ -15,4 +15,9 @@ const (
         SELECT id, email, name, password_hash, provider, provider_id, avatar_url, role, status, created_at, updated_at
         FROM users WHERE provider = $1 AND provider_id = $2
     `
+	queryUpdatePassword = `
+    UPDATE users 
+    SET password_hash = $1, updated_at = $2 
+    WHERE id = $3
+`
 )

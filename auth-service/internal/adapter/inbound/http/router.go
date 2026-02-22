@@ -22,6 +22,7 @@ func setupRouter(authHandler *handler.AuthHandler, healthHandler *handler.Health
 	//protected route
 	requireAuth := middleware.RequiredAuth(tokenMaker)
 	v1.Handle("GET /auth/me", requireAuth(http.HandlerFunc(authHandler.GetMe)))
+	v1.Handle("POST /auth/change-password", requireAuth(http.HandlerFunc(authHandler.ChangePassword)))
 	mux.HandleFunc("GET /healthz", healthHandler.Liveness)
 	mux.HandleFunc("GET /readyz", healthHandler.Readiness)
 	mux.Handle("/swagger/", httpSwagger.WrapHandler)

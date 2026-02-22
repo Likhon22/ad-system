@@ -265,3 +265,27 @@ func (h *AuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
+
+type PasswordChangeRequest struct {
+	CurrentPassword string `json:"current_password" validate:"required,min=8"`
+	NewPassword     string `json:"new_password" validate:"required,min=8"`
+}
+
+func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
+	claims, ok := utils.GetClaims(r.Context())
+	if !ok {
+		utils.WriteError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	var req PasswordChangeRequest
+	utils.ReadJson(w, r, &req)
+	err := h.authService.ChangePassword(r.Context(), claims.Email, req.CurrentPassword, req.NewPassword)
+	if err != nil {
+		utils.ErrorHandler(w, err)
+		return
+	}
+	if err := utils.WriteMessage(w, "password changed successfully", http.StatusOK); err != nil {
+		utils.WriteError(w, http.StatusInternalServerError, "Internal server error")
+		return
+	}
+}

@@ -21,3 +21,13 @@ func WriteJSON[T any](w http.ResponseWriter, message string, statusCode int, dat
 	w.WriteHeader(statusCode)
 	return json.NewEncoder(w).Encode(res)
 }
+
+func WriteMessage(w http.ResponseWriter, message string, statusCode int) error {
+	w.Header().Set("Content-Type", "application/json")
+	res := map[string]any{
+		"message": message,
+		"success": true,
+	}
+	w.WriteHeader(statusCode)
+	return json.NewEncoder(w).Encode(res)
+}

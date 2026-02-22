@@ -44,6 +44,9 @@ func ErrorHandler(w http.ResponseWriter, err error) {
 			WriteError(w, http.StatusBadRequest, "this account uses Google login, please sign in with Google")
 		case errors.Is(err, domain.ErrEmailConflict):
 			WriteError(w, http.StatusConflict, "this email is already registered, please sign in with email and password")
+
+		case errors.Is(err, domain.ErrSamePassword):
+			WriteError(w, http.StatusBadRequest, "you are using the same password.Please use a new password")
 		default:
 			WriteError(w, http.StatusInternalServerError, "internal server error")
 		}
