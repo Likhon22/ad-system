@@ -45,16 +45,16 @@ func (s *authService) Register(ctx context.Context, input inbound.RegisterInput)
 		UpdatedAt:    now,
 	}
 
-	if err := s.userRepo.Create(ctx, user); err != nil {
+	newUser, err := s.userRepo.Create(ctx, user)
+	if err != nil {
 		return nil, err
 	}
-
 	return &inbound.UserSummary{
-		ID:     user.ID,
-		Email:  user.Email,
-		Role:   user.Role,
-		Name:   user.Name,
-		Status: user.Status,
+		ID:     newUser.ID,
+		Email:  newUser.Email,
+		Role:   newUser.Role,
+		Name:   newUser.Name,
+		Status: newUser.Status,
 	}, nil
 }
 

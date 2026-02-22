@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -19,48 +20,127 @@ func NewUserRepository(pool *pgxpool.Pool) outbound.UserRepository {
 	return &userRepository{pool: pool}
 }
 
-func (r *userRepository) Create(ctx context.Context, user *domain.User) error {
+func (r *userRepository) Create(ctx context.Context, user *domain.User) (*domain.User, error) {
+
+	var providerID *string
+	if user.ProviderID != "" {
+		providerID = &user.ProviderID
+	}
+
+	var avatarURL *string
+	if user.AvatarURL != "" {
+		avatarURL = &user.AvatarURL
+	}
+
+	var passwordHash *string
+	if user.PasswordHash != "" {
+		passwordHash = &user.PasswordHash
+	}
 
 	_, err := r.pool.Exec(ctx, queryCreateUser,
-		user.ID, user.Email, user.Name, user.PasswordHash, user.Provider,
-		user.Role, user.Status, user.CreatedAt, user.UpdatedAt,
+		user.ID,
+		user.Email,
+		user.Name,
+		passwordHash,
+		user.Provider,
+		providerID,
+		avatarURL,
+		user.Role,
+		user.Status,
+		user.CreatedAt,
+		user.UpdatedAt,
 	)
 	if err != nil {
 		var pgErr *pgconn.PgError
-
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			return domain.ErrEmailAlreadyExists
+			return nil, domain.ErrEmailAlreadyExists
 		}
-		return err
+		return nil, fmt.Errorf("userRepository.Create: %w", err)
 	}
-	return nil
+
+	return user, nil
 }
 
 func (r *userRepository) FindByEmail(ctx context.Context, email string) (*domain.User, error) {
+	var user domain.User
 
-	user := &domain.User{}
+	// These three are nullable in the DB — we must scan into *string not string.
+	// WHY *string? pgx cannot scan SQL NULL into a Go string. It panics.
+	// With *string, NULL → nil pointer, which we then safely check below.
+	var passwordHash *string
+	var providerID *string
+	var avatarURL *string
+
 	err := r.pool.QueryRow(ctx, queryFindByEmail, email).Scan(
-		&user.ID, &user.Email, &user.Name, &user.PasswordHash, &user.Provider,
-		&user.Role, &user.Status, &user.CreatedAt, &user.UpdatedAt,
+		&user.ID,
+		&user.Email,
+		&user.Name,
+		&passwordHash,
+		&user.Provider,
+		&providerID,
+		&avatarURL,
+		&user.Role,
+		&user.Status,
+		&user.CreatedAt,
+		&user.UpdatedAt,
 	)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, domain.ErrUserNotFound
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrUserNotFound
+		}
+		return nil, fmt.Errorf("userRepository.FindByEmail: %w", err)
 	}
-	return user, err
+
+	// Safely dereference only if the pointer is non-nil
+	if passwordHash != nil {
+		user.PasswordHash = *passwordHash
+	}
+	if providerID != nil {
+		user.ProviderID = *providerID
+	}
+	if avatarURL != nil {
+		user.AvatarURL = *avatarURL
+	}
+
+	return &user, nil
 }
 
-// func (r *userRepository) FindByID(ctx context.Context, id uuid.UUID) (*domain.User, error) {
-// 	query := `
-//         SELECT id, email, password_hash, role, status, created_at, updated_at
-//         FROM users WHERE id = $1
-//     `
-// 	user := &domain.User{}
-// 	err := r.pool.QueryRow(ctx, query, id).Scan(
-// 		&user.ID, &user.Email, &user.PasswordHash,
-// 		&user.Role, &user.Status, &user.CreatedAt, &user.UpdatedAt,
-// 	)
-// 	if errors.Is(err, pgx.ErrNoRows) {
-// 		return nil, domain.ErrUserNotFound
-// 	}
-// 	return user, err
-// }
+func (r *userRepository) FindByProviderID(ctx context.Context, provider, providerID string) (*domain.User, error) {
+
+	var user domain.User
+	var dbProviderID *string
+	var avatarURL *string
+	var passwordHash *string
+
+	err := r.pool.QueryRow(ctx, queryFindByProviderID, provider, providerID).Scan(
+		&user.ID,
+		&user.Email,
+		&user.Name,
+		&passwordHash,
+		&user.Provider,
+		&dbProviderID,
+		&avatarURL,
+		&user.Role,
+		&user.Status,
+		&user.CreatedAt,
+		&user.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrUserNotFound
+		}
+		return nil, fmt.Errorf("userRepository.FindByProviderID: %w", err)
+	}
+
+	if passwordHash != nil {
+		user.PasswordHash = *passwordHash
+	}
+	if dbProviderID != nil {
+		user.ProviderID = *dbProviderID
+	}
+	if avatarURL != nil {
+		user.AvatarURL = *avatarURL
+	}
+
+	return &user, nil
+}

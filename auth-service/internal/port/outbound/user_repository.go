@@ -7,7 +7,7 @@ import (
 )
 
 type UserRepository interface {
-	Create(ctx context.Context, user *domain.User) error
+	Create(ctx context.Context, user *domain.User) (*domain.User, error)
 	FindByEmail(ctx context.Context, email string) (*domain.User, error)
-	// FindByID(ctx context.Context, id uuid.UUID) (*domain.User, error)
+	FindByProviderID(ctx context.Context, provider, providerID string) (*domain.User, error)
 }
