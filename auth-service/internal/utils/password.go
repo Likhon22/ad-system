@@ -2,6 +2,7 @@ package utils
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
 	"errors"
@@ -48,4 +49,9 @@ func ComparePassword(inputPass, storedHash string) (bool, error) {
 	match := subtle.ConstantTimeCompare(storedHashBytes, inputHash)
 	return match == 1, nil
 
+}
+
+func HashToken(token string) string {
+	hash := sha256.Sum256([]byte(token))
+	return base64.StdEncoding.EncodeToString(hash[:])
 }

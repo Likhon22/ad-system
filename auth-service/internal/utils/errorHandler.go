@@ -47,6 +47,8 @@ func ErrorHandler(w http.ResponseWriter, err error) {
 
 		case errors.Is(err, domain.ErrSamePassword):
 			WriteError(w, http.StatusBadRequest, "you are using the same password.Please use a new password")
+		case errors.Is(err, domain.ErrInvalidOrExpiredToken):
+			WriteError(w, http.StatusUnprocessableEntity, err.Error())
 		default:
 			WriteError(w, http.StatusInternalServerError, "internal server error")
 		}

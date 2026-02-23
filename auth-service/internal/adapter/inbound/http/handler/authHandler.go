@@ -278,7 +278,15 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req PasswordChangeRequest
-	utils.ReadJson(w, r, &req)
+
+	if err := utils.ReadJson(w, r, &req); err != nil {
+		utils.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := h.validate.ValidateStruct(req); err != nil {
+		utils.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	err := h.authService.ChangePassword(r.Context(), claims.Email, req.CurrentPassword, req.NewPassword)
 	if err != nil {
 		utils.ErrorHandler(w, err)
@@ -296,5 +304,54 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	if err := utils.WriteMessage(w, "logout successfully", http.StatusOK); err != nil {
 		utils.WriteError(w, http.StatusInternalServerError, "Internal server error")
 		return
+	}
+}
+
+type ForgotPasswordRequest struct {
+	Email string `json:"email" validate:"required,email"`
+}
+
+func (h *AuthHandler) ForgetPassword(w http.ResponseWriter, r *http.Request) {
+	var req ForgotPasswordRequest
+	if err := utils.ReadJson(w, r, &req); err != nil {
+		utils.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := h.validate.ValidateStruct(req); err != nil {
+		utils.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if err := h.authService.ForgotPassword(r.Context(), req.Email); err != nil {
+		utils.ErrorHandler(w, err)
+		return
+	}
+
+	if err := utils.WriteMessage(w, "If an account exists with that email, you will receive a reset link shortly.", http.StatusOK); err != nil {
+		utils.WriteError(w, http.StatusInternalServerError, "Internal server error")
+	}
+}
+
+type ResetPasswordRequest struct {
+	Token       string `json:"token"        validate:"required"`
+	NewPassword string `json:"new_password" validate:"required,min=8"`
+}
+
+func (h *AuthHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
+	var req ResetPasswordRequest
+	if err := utils.ReadJson(w, r, &req); err != nil {
+		utils.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := h.validate.ValidateStruct(req); err != nil {
+		utils.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := h.authService.ResetPassword(r.Context(), req.Token, req.NewPassword); err != nil {
+		utils.ErrorHandler(w, err)
+		return
+	}
+	if err := utils.WriteMessage(w, "password reset successfully", http.StatusOK); err != nil {
+		utils.WriteError(w, http.StatusInternalServerError, "Internal server error")
 	}
 }

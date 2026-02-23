@@ -20,4 +20,21 @@ const (
     SET password_hash = $1, updated_at = $2 
     WHERE id = $3
 `
+	queryCreateResetToken = `
+    INSERT INTO password_reset_tokens (user_id, token_hash, expires_at, created_at)
+    VALUES ($1, $2, $3, $4)
+`
+
+	queryFindByTokenHash = `
+    SELECT user_id FROM password_reset_tokens
+    WHERE token_hash = $1 AND expires_at > NOW()
+`
+
+	queryDeleteByTokenHash = `
+    DELETE FROM password_reset_tokens WHERE token_hash = $1
+`
+
+	queryDeleteAllForUser = `
+    DELETE FROM password_reset_tokens WHERE user_id = $1
+`
 )

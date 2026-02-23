@@ -19,13 +19,25 @@ type authService struct {
 	userRepo      outbound.UserRepository
 	tokenMaker    outbound.TokenMaker
 	oauthProvider outbound.OAuthProvider
+	resetRepo     outbound.PasswordResetRepository
+	emailSender   outbound.EmailSender
+	frontendURL   string
 }
 
-func NewAuthService(userRepo outbound.UserRepository, tokenMaker outbound.TokenMaker, oauthProvider outbound.OAuthProvider) inbound.AuthService {
+func NewAuthService(
+	userRepo outbound.UserRepository,
+	tokenMaker outbound.TokenMaker,
+	oauthProvider outbound.OAuthProvider,
+	resetRepo outbound.PasswordResetRepository,
+	emailSender outbound.EmailSender,
+	frontendURL string) inbound.AuthService {
 	return &authService{
 		userRepo:      userRepo,
 		tokenMaker:    tokenMaker,
 		oauthProvider: oauthProvider,
+		resetRepo:     resetRepo,
+		emailSender:   emailSender,
+		frontendURL:   frontendURL,
 	}
 }
 
@@ -180,6 +192,10 @@ func (s *authService) GoogleCallback(ctx context.Context, code, state, storedSta
 
 	if flow == "login" {
 		if userNotFound {
+			existing, emailErr := s.userRepo.FindByEmail(ctx, googleUser.Email)
+			if emailErr == nil && existing.Provider == "local" {
+				return inbound.LoginResponse{}, domain.ErrEmailConflict
+			}
 			return inbound.LoginResponse{}, domain.ErrUserNotFound
 		}
 	} else {
@@ -271,4 +287,53 @@ func (s *authService) ChangePassword(ctx context.Context, email, currentPassword
 		return err
 	}
 	return s.userRepo.UpdatePassword(ctx, user.ID, newHash)
+}
+
+func (s *authService) ForgotPassword(ctx context.Context, email string) error {
+	user, err := s.userRepo.FindByEmail(ctx, email)
+
+	if err != nil {
+		return nil
+	}
+	if user.Provider != "local" {
+		return nil
+	}
+	tokenBytes := make([]byte, 32)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		return fmt.Errorf("failed to generate token: %w", err)
+	}
+
+	plainToken := base64.URLEncoding.EncodeToString(tokenBytes)
+	tokenHash := utils.HashToken(plainToken)
+	_ = s.resetRepo.DeleteAllForUser(ctx, user.ID)
+
+	expiresAt := time.Now().Add(15 * time.Minute)
+
+	if err := s.resetRepo.CreateToken(ctx, user.ID, tokenHash, expiresAt); err != nil {
+		return err
+	}
+
+	resetLink := s.frontendURL + "/reset-password?token=" + plainToken
+
+	return s.emailSender.SendPasswordResetEmail(ctx, user.Email, resetLink)
+
+}
+func (s *authService) ResetPassword(ctx context.Context, token, newPassword string) error {
+	tokenHash := utils.HashToken(token)
+
+	userID, err := s.resetRepo.FindByTokenHash(ctx, tokenHash)
+	if err != nil {
+		return domain.ErrInvalidOrExpiredToken
+	}
+
+	newHash, err := utils.HashPassword(newPassword)
+	if err != nil {
+		return err
+	}
+
+	if err := s.userRepo.UpdatePassword(ctx, userID, newHash); err != nil {
+		return err
+	}
+
+	return s.resetRepo.DeleteAllForUser(ctx, userID)
 }

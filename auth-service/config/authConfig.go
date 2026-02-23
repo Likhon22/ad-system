@@ -14,6 +14,7 @@ type AuthConfig struct {
 	GoogleClientID       string
 	GoogleClientSecret   string
 	GoogleRedirectURL    string
+	FrontendURL          string
 }
 
 func loadAuthConfig() (*AuthConfig, error) {
@@ -25,7 +26,7 @@ func loadAuthConfig() (*AuthConfig, error) {
 	googleClientID := os.Getenv("GOOGLE_CLIENT_ID")
 	googleClientSecret := os.Getenv("GOOGLE_CLIENT_SECRET")
 	googleRedirectURL := os.Getenv("GOOGLE_REDIRECT_URL")
-
+	frontendURL := getEnv("FRONTEND_URL", "http://localhost:3000")
 	if accessSecret == "" {
 		return nil, fmt.Errorf("ACCESS_TOKEN_SECRET is required")
 	}
@@ -51,6 +52,9 @@ func loadAuthConfig() (*AuthConfig, error) {
 	if googleRedirectURL == "" {
 		return nil, fmt.Errorf("GOOGLE_REDIRECT_URL is required")
 	}
+	if frontendURL == "" {
+		return nil, fmt.Errorf("fronted_url is required")
+	}
 
 	return &AuthConfig{
 		JWTAccessSecret:      accessSecret,
@@ -60,5 +64,6 @@ func loadAuthConfig() (*AuthConfig, error) {
 		GoogleClientID:       googleClientID,
 		GoogleClientSecret:   googleClientSecret,
 		GoogleRedirectURL:    googleRedirectURL,
+		FrontendURL:          frontendURL,
 	}, nil
 }

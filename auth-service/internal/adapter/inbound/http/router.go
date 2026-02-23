@@ -19,11 +19,14 @@ func setupRouter(authHandler *handler.AuthHandler, healthHandler *handler.Health
 	v1.HandleFunc("POST /auth/refresh-token", authHandler.RefreshToken)
 	v1.HandleFunc("GET /auth/google", authHandler.GoogleInitiate)
 	v1.HandleFunc("GET /auth/google/callback", authHandler.GoogleCallback)
-	v1.HandleFunc("POST /auth/logout", authHandler.Logout)
+	v1.HandleFunc("POST /auth/forget-password", authHandler.ForgetPassword)
+	v1.HandleFunc("POST /auth/reset-password", authHandler.ResetPassword)
 	//protected route
 	requireAuth := middleware.RequiredAuth(tokenMaker)
 	v1.Handle("GET /auth/me", requireAuth(http.HandlerFunc(authHandler.GetMe)))
 	v1.Handle("POST /auth/change-password", requireAuth(http.HandlerFunc(authHandler.ChangePassword)))
+	v1.Handle("POST /auth/logout", requireAuth(http.HandlerFunc(authHandler.Logout)))
+
 	mux.HandleFunc("GET /healthz", healthHandler.Liveness)
 	mux.HandleFunc("GET /readyz", healthHandler.Readiness)
 	mux.Handle("/swagger/", httpSwagger.WrapHandler)

@@ -40,4 +40,6 @@ type AuthService interface {
 	GoogleCallback(ctx context.Context, code, state, storedState, flow string, role domain.Role) (LoginResponse, error)
 
 	ChangePassword(ctx context.Context, email, currentPassword, newPassword string) error
+	ForgotPassword(ctx context.Context, email string) error
+	ResetPassword(ctx context.Context, token, newPassword string) error
 }

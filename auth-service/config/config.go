@@ -15,6 +15,7 @@ type Config struct {
 	IsProduction bool
 	DB           *DBConfig
 	Auth         *AuthConfig
+	Email        *EmailConfig
 }
 
 var (
@@ -40,6 +41,12 @@ func GetConfig() (*Config, error) {
 			return
 		}
 		instance.Auth = authCfg
+		emailConfig, err := loadEmailConfig()
+		if err != nil {
+			initErr = err
+			return
+		}
+		instance.Email = emailConfig
 		initErr = instance.validate()
 
 	})

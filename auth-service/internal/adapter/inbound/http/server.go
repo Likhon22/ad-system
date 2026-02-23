@@ -9,6 +9,7 @@ import (
 	"github.com/likhon22/ad-system/auth-service/config"
 	"github.com/likhon22/ad-system/auth-service/internal/adapter/inbound/http/handler"
 	"github.com/likhon22/ad-system/auth-service/internal/adapter/inbound/http/middleware"
+	"github.com/likhon22/ad-system/auth-service/internal/adapter/outbound/email"
 	"github.com/likhon22/ad-system/auth-service/internal/adapter/outbound/jwt"
 	"github.com/likhon22/ad-system/auth-service/internal/adapter/outbound/oauth"
 	postgres "github.com/likhon22/ad-system/auth-service/internal/adapter/outbound/postgres"
@@ -34,7 +35,9 @@ func NewApp(pool *pgxpool.Pool, cfg *config.Config) *App {
 		cfg.Auth.RefreshTokenDuration,
 	)
 	authOAuth := oauth.NewGoogleOAuthProvider(cfg.Auth.GoogleClientID, cfg.Auth.GoogleClientSecret, cfg.Auth.GoogleRedirectURL)
-	authSvc := application.NewAuthService(userRepo, tokenMaker, authOAuth)
+	resetRepo := postgres.NewPasswordResetRepository(pool)
+	emailSender := email.NewSmtpSender(cfg.Email.SmtpHost, cfg.Email.SmtpPort, cfg.Email.EmailFrom)
+	authSvc := application.NewAuthService(userRepo, tokenMaker, authOAuth, resetRepo, emailSender, cfg.Auth.FrontendURL)
 
 	// inbound adapters (HTTP handlers — gets interfaces)
 	authHandler := handler.NewHandler(authSvc, validate, cfg.Auth.RefreshTokenDuration, cfg.IsProduction)
