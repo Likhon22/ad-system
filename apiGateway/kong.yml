@@ -1,0 +1,33 @@
+_format_version: "3.0"
+
+services:
+  - name: auth-service
+    url: http://host.docker.internal:5000
+    routes:
+      - name: login
+        paths: [/api/v1/auth/login]
+        methods: [POST]
+        plugins:
+          - name: rate-limiting
+            config: { minute: 10, policy: local }
+
+      - name: register
+        paths: [/api/v1/auth/register]
+        methods: [POST]
+        plugins:
+          - name: rate-limiting
+            config: { minute: 5, policy: local }
+
+      - name: forgot-password
+        paths: [/api/v1/auth/forget-password]
+        methods: [POST]
+        plugins:
+          - name: rate-limiting
+            config: { minute: 3, policy: local }
+
+      - name: auth-general
+        paths: [/api/v1/auth]
+        strip_path: false
+        plugins:
+          - name: rate-limiting
+            config: { minute: 60, policy: local }
