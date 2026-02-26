@@ -1,0 +1,41 @@
+# Binary output
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Air live reload
+temp/
+.air.toml.bak
+build-errors.log
+
+# Environment variables - NEVER commit this
+.env
+
+# Go
+*.test
+*.out
+vendor/
+go.sum.bak
+
+# IDE
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Migration lock files
+*.lock
+
+# Docker
+*.env.local
+
+# Logs
+*.log
+logs/
+
+# OS
+Thumbs.db
