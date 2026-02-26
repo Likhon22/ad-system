@@ -1,6 +1,8 @@
 package httpserver
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -60,5 +62,12 @@ func NewApp(pool *pgxpool.Pool, cfg *config.Config) *App {
 
 func (a *App) Run() error {
 	fmt.Printf("auth-service starting on %s\n", a.server.Addr)
-	return a.server.ListenAndServe()
+	if err := a.server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	return nil
+}
+
+func (a *App) Shutdown(ctx context.Context) error {
+	return a.server.Shutdown(ctx)
 }

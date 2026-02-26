@@ -7,7 +7,12 @@
 package main
 
 import (
+	"context"
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/likhon22/ad-system/auth-service/config"
 	httpserver "github.com/likhon22/ad-system/auth-service/internal/adapter/inbound/http"
@@ -26,7 +31,19 @@ func main() {
 	defer pool.Close()
 
 	app := httpserver.NewApp(pool, cfg)
-	if err := app.Run(); err != nil {
-		log.Fatalf("server stopped: %v", err)
+	go func() {
+		if err := app.Run(); err != nil {
+			log.Fatalf("server error: %v", err)
+		}
+	}()
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	log.Println("shutting down server...")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := app.Shutdown(ctx); err != nil {
+		log.Fatalf("forced shutdown: %v", err)
 	}
+	log.Println("server exited cleanly")
 }
