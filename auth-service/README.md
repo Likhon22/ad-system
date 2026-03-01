@@ -14,6 +14,7 @@ Authentication and authorization microservice for the Ad System platform. Built 
 - [API Endpoints](#api-endpoints)
 - [Environment Variables](#environment-variables)
 - [Running the Service](#running-the-service)
+- [Kong API Gateway](#kong-api-gateway)
 - [Migrations](#migrations)
 - [Error Reference](#error-reference)
 - [Architecture Decisions](#architecture-decisions)
@@ -51,8 +52,11 @@ Adapter (Outbound) — PostgreSQL / JWT / Google OAuth implementations
 | HTTP Router      | `net/http` stdlib mux (no framework)  |
 | Database         | PostgreSQL (pgx/v5 + pgxpool)         |
 | Password Hashing | Argon2id                              |
+| Token Hashing    | SHA-256 (`crypto/sha256`)             |
 | JWT              | golang-jwt/v5 (HMAC SHA-256)          |
 | OAuth2           | golang.org/x/oauth2 + Google provider |
+| Email            | `net/smtp` stdlib + Mailpit (local)   |
+| API Gateway      | Kong 3.7 (DB-less declarative mode)   |
 | Logging          | `log/slog` (structured)               |
 | Migrations       | golang-migrate/migrate                |
 | Docs             | Swagger (swaggo/swag)                 |
@@ -69,8 +73,9 @@ auth-service/
 │   └── main.go                          # Entry point
 ├── config/
 │   ├── config.go                        # App config loader
-│   ├── authConfig.go                    # JWT secrets, token durations
-│   └── dbConfig.go                      # Database connection config
+│   ├── authConfig.go                    # JWT secrets, token durations, FrontendURL
+│   ├── dbConfig.go                      # Database connection config
+│   └── emailConfig.go                   # SMTP host, port, sender address
 ├── internal/
 │   ├── domain/                          # Core business types — no imports from other layers
 │   │   ├── user.go                      # User struct, Role, Status types
@@ -117,10 +122,12 @@ auth-service/
 │       ├── validator.go                 # Struct validation wrapper
 │       └── middleware.go                # Middleware utilities
 ├── migrations/
-│   ├── 000001_create_users.up.sql       # Initial users table
+│   ├── 000001_create_users.up.sql               # Initial users table
 │   ├── 000001_create_users.down.sql
-│   ├── 000002_add_oauth_and_profile.up.sql  # OAuth columns, nullable password
-│   └── 000002_add_oauth_and_profile.down.sql
+│   ├── 000002_add_oauth_and_profile.up.sql      # OAuth columns, nullable password
+│   ├── 000002_add_oauth_and_profile.down.sql
+│   ├── 000003_add_password_reset_tokens.up.sql  # password_reset_tokens table + index
+│   └── 000003_add_password_reset_tokens.down.sql
 ├── docs/                                # Swagger generated files
 ├── Makefile
 └── go.mod
@@ -155,6 +162,24 @@ auth-service/
 
 ---
 
+### `password_reset_tokens` table (migration 000003)
+
+| Column       | Type        | Nullable | Notes                           |
+| ------------ | ----------- | -------- | ------------------------------- |
+| `id`         | UUID        | NOT NULL | Primary key, gen_random_uuid()  |
+| `user_id`    | UUID        | NOT NULL | FK → users.id ON DELETE CASCADE |
+| `token_hash` | TEXT        | NOT NULL | SHA-256 hash of the raw token   |
+| `expires_at` | TIMESTAMPTZ | NOT NULL | 15 minutes from creation        |
+| `created_at` | TIMESTAMPTZ | NOT NULL | Default NOW()                   |
+
+**Indexes:**
+
+- `idx_password_reset_token_hash` — on `token_hash` (used for fast lookup on reset)
+
+**Why store the hash, not the raw token?** The raw token is sent to the user's email. If the database is breached, an attacker with only the hash cannot use it — they'd need to reverse SHA-256, which is computationally infeasible. The raw token is never persisted anywhere.
+
+---
+
 ## Features
 
 ### ✅ Local Authentication
@@ -177,27 +202,55 @@ auth-service/
 - Detects identical new password via `ComparePassword` before hashing (`ErrSamePassword`).
 - Updates `password_hash` + `updated_at` in a single `UPDATE` query.
 
+### ✅ Logout
+
+- Protected route — requires valid JWT.
+- Server clears the `refresh_token` HttpOnly cookie (`MaxAge: -1`).
+- Client is responsible for discarding the in-memory access token.
+- No service-layer call needed — stateless logout is sufficient since refresh cookie is gone (silent refresh cycle is broken).
+
+### ✅ Forgot Password
+
+- Public route — no auth required.
+- Always returns the same generic message regardless of whether the email exists (prevents email enumeration).
+- Internally: looks up user → deletes any old reset tokens → creates a new SHA-256-hashed token with 15-minute expiry → sends reset link via SMTP email.
+- Raw token is generated with `crypto/rand`, hashed with SHA-256 before storing. Only the hash lives in the DB.
+- Reset link format: `{FRONTEND_URL}/reset-password?token={rawToken}`
+
+### ✅ Reset Password
+
+- Public route — no auth required.
+- Accepts `token` (raw, from email link) + `new_password`.
+- Hashes the token → looks up in DB → finds the `user_id` → updates password → deletes all reset tokens for that user.
+- Returns `ErrInvalidOrExpiredToken` (422) if token not found or expired.
+
 ---
 
 ## API Endpoints
 
-| Method | Path                    | Auth            | Description                           |
-| ------ | ----------------------- | --------------- | ------------------------------------- |
-| `POST` | `/auth/register`        | Public          | Register with email + password + role |
-| `POST` | `/auth/login`           | Public          | Login, get tokens                     |
-| `POST` | `/auth/refresh-token`   | Public (cookie) | Refresh access token                  |
-| `GET`  | `/auth/me`              | Protected       | Get current user                      |
-| `POST` | `/auth/change-password` | Protected       | Change password                       |
-| `GET`  | `/auth/google`          | Public          | Initiate Google OAuth2                |
-| `GET`  | `/auth/google/callback` | Public          | Google OAuth2 callback                |
-| `GET`  | `/health`               | Public          | Health check                          |
+All routes are prefixed with `/api/v1`. Through Kong gateway (port 8000) or directly (port 5000).
+
+| Method | Path                           | Auth            | Description                           |
+| ------ | ------------------------------ | --------------- | ------------------------------------- |
+| `POST` | `/api/v1/auth/register`        | Public          | Register with email + password + role |
+| `POST` | `/api/v1/auth/login`           | Public          | Login, get tokens                     |
+| `POST` | `/api/v1/auth/refresh-token`   | Public (cookie) | Refresh access token                  |
+| `GET`  | `/api/v1/auth/me`              | Protected       | Get current user                      |
+| `POST` | `/api/v1/auth/change-password` | Protected       | Change password                       |
+| `POST` | `/api/v1/auth/logout`          | Protected       | Clear refresh cookie, logout          |
+| `GET`  | `/api/v1/auth/google`          | Public          | Initiate Google OAuth2                |
+| `GET`  | `/api/v1/auth/google/callback` | Public          | Google OAuth2 callback                |
+| `POST` | `/api/v1/auth/forget-password` | Public          | Request password reset email          |
+| `POST` | `/api/v1/auth/reset-password`  | Public          | Reset password with token from email  |
+| `GET`  | `/healthz`                     | Public          | Liveness probe (direct port only)     |
+| `GET`  | `/readyz`                      | Public          | Readiness probe (direct port only)    |
 
 ### Request / Response examples
 
 **Register**
 
 ```json
-POST /auth/register
+POST /api/v1/auth/register
 {
   "email": "user@example.com",
   "password": "securepassword",
@@ -209,7 +262,7 @@ POST /auth/register
 **Login**
 
 ```json
-POST /auth/login
+POST /api/v1/auth/login
 {
   "email": "user@example.com",
   "password": "securepassword"
@@ -221,7 +274,7 @@ POST /auth/login
 **Change Password**
 
 ```json
-POST /auth/change-password
+POST /api/v1/auth/change-password
 Authorization: Bearer <access_token>
 {
   "current_password": "oldpassword",
@@ -229,21 +282,52 @@ Authorization: Bearer <access_token>
 }
 ```
 
+**Logout**
+
+```
+POST /api/v1/auth/logout
+Authorization: Bearer <access_token>
+→ clears refresh_token cookie (MaxAge: -1)
+→ discard access token on client side
+```
+
+**Forgot Password**
+
+```json
+POST /api/v1/auth/forget-password
+{
+  "email": "user@example.com"
+}
+// Always responds with:
+// "If an account exists with that email, you will receive a reset link shortly."
+// Check Mailpit at http://localhost:8025 during local dev
+```
+
+**Reset Password**
+
+```json
+POST /api/v1/auth/reset-password
+{
+  "token": "<raw_token_from_email_link>",
+  "new_password": "newSecurePassword123"
+}
+```
+
 **Google OAuth — Login flow**
 
 ```
-GET /auth/google?flow=login
+GET /api/v1/auth/google?flow=login
 → redirects to Google consent screen
-→ Google redirects to /auth/google/callback
+→ Google redirects to /api/v1/auth/google/callback
 → returns tokens
 ```
 
 **Google OAuth — Register flow**
 
 ```
-GET /auth/google?flow=register&role=advertiser
+GET /api/v1/auth/google?flow=register&role=advertiser
 → redirects to Google consent screen
-→ Google redirects to /auth/google/callback
+→ Google redirects to /api/v1/auth/google/callback
 → creates account + returns tokens
 ```
 
@@ -268,8 +352,18 @@ REFRESH_TOKEN_DURATION=168h   # 7 days
 # Google OAuth2
 GOOGLE_CLIENT_ID=your-google-client-id
 GOOGLE_CLIENT_SECRET=your-google-client-secret
-GOOGLE_REDIRECT_URL=http://localhost:8080/auth/google/callback
+GOOGLE_REDIRECT_URL=http://localhost:5000/api/v1/auth/google/callback
+
+# Email (SMTP)
+SMTP_HOST=localhost
+SMTP_PORT=1025          # Mailpit SMTP port for local dev (NOT 8025 — that's the web UI)
+EMAIL_FROM=noreply@localhost
+
+# Frontend (used in reset-password email link)
+FRONTEND_URL=http://localhost:3000
 ```
+
+> **Local email dev:** Run Mailpit (`docker run -p 1025:1025 -p 8025:8025 axllent/mailpit`). All outgoing emails are caught — view them at `http://localhost:8025`. Never reaches a real inbox.
 
 ---
 
@@ -284,7 +378,7 @@ make tidy
 # Run migrations
 make migrate-up
 
-# Run in development (with live reload via Air)
+# Run in development (with live reload via Air + graceful shutdown on Ctrl+C)
 make dev
 
 # Run directly
@@ -299,6 +393,48 @@ make swagger
 # Lint
 make lint
 ```
+
+---
+
+## Kong API Gateway
+
+Kong runs in DB-less declarative mode. Config lives in `apiGateway/kong.yml`.
+
+```bash
+# Start Kong
+cd apiGateway
+docker compose up -d
+
+# After any kong.yml change
+docker compose restart
+
+# Verify Kong is up
+curl http://localhost:8001          # Admin API
+curl http://localhost:8000/api/v1/auth/login  # Proxy
+```
+
+**Ports:**
+
+- `8000` — Kong proxy (client traffic goes here)
+- `8001` — Kong admin API
+- `5000` — Auth service directly (infrastructure probes, health checks)
+
+**Global plugins configured:**
+
+- `cors` — allows `http://localhost:3000`, credentials enabled
+- `request-size-limiting` — max 1MB body
+- `correlation-id` — injects `X-Request-ID` header on every request
+- `response-transformer` — strips `X-Powered-By` and `Server` headers
+
+**Per-route rate limiting:**
+| Route | Limit |
+| --- | --- |
+| `POST /api/v1/auth/login` | 10 req/min |
+| `POST /api/v1/auth/register` | 5 req/min |
+| `POST /api/v1/auth/forget-password` | 3 req/min |
+| All other `/api/v1/auth/*` | 60 req/min |
+
+> **Health endpoints are NOT behind Kong.** Hit `localhost:5000/healthz` and `localhost:5000/readyz` directly. Infrastructure probes (Kubernetes, Docker healthchecks) should always bypass the gateway.
 
 ---
 
@@ -325,16 +461,17 @@ make migrate-force version=1
 
 ## Error Reference
 
-| Domain Error            | HTTP Status | Meaning                                  |
-| ----------------------- | ----------- | ---------------------------------------- |
-| `ErrUserNotFound`       | 404         | No user with that email/provider         |
-| `ErrEmailAlreadyExists` | 409         | Email taken (local registration)         |
-| `ErrEmailConflict`      | 409         | Email registered with different provider |
-| `ErrInvalidCredentials` | 401         | Wrong password or bad OAuth state        |
-| `ErrUserSuspended`      | 403         | Account suspended                        |
-| `ErrInvalidRole`        | 400         | Role must be advertiser or publisher     |
-| `ErrOAuthUser`          | 400         | Action not allowed for OAuth accounts    |
-| `ErrSamePassword`       | 400         | New password same as current             |
+| Domain Error               | HTTP Status | Meaning                                  |
+| -------------------------- | ----------- | ---------------------------------------- |
+| `ErrUserNotFound`          | 404         | No user with that email/provider         |
+| `ErrEmailAlreadyExists`    | 409         | Email taken (local registration)         |
+| `ErrEmailConflict`         | 409         | Email registered with different provider |
+| `ErrInvalidCredentials`    | 401         | Wrong password or bad OAuth state        |
+| `ErrUserSuspended`         | 403         | Account suspended                        |
+| `ErrInvalidRole`           | 400         | Role must be advertiser or publisher     |
+| `ErrOAuthUser`             | 400         | Action not allowed for OAuth accounts    |
+| `ErrSamePassword`          | 400         | New password same as current             |
+| `ErrInvalidOrExpiredToken` | 422         | Reset token not found or past expiry     |
 
 ---
 
@@ -346,6 +483,9 @@ Go's `string` zero value is `""`, which is indistinguishable from an empty strin
 **Why two JWT secrets?**
 Access tokens and refresh tokens have different security profiles. If one secret leaks, the other remains safe. Refresh tokens are long-lived and stored in `HttpOnly` cookies — they need stronger isolation from the short-lived access tokens sent as Bearer headers.
 
+**Why SHA-256 for reset tokens but Argon2id for passwords?**
+Argon2id is intentionally slow (64MB memory, multiple passes, random salt) — designed to make brute-force attacks expensive. Reset tokens are randomly generated 32-byte values (`crypto/rand`) with 15-minute expiry — brute-force isn't the threat. The threat is DB breach. SHA-256 is fast and deterministic (no salt needed because the token itself is already random), which is correct here: it protects against breach without the cost of Argon2id. Using Argon2id for tokens would make every reset lookup hundreds of milliseconds slower for no benefit.
+
 **Why state cookie for OAuth?**
 This is CSRF protection. Without verifying that the `state` param in the callback matches what was sent in the initiation request, an attacker could forge a callback request and trick your server into authenticating a malicious code. The cookie is `HttpOnly` and scoped to 5 minutes.
 
@@ -355,11 +495,13 @@ Google's callback URL only includes `code` and `state` — you cannot add extra 
 **Why `provider_id` (Sub) not email for OAuth user lookup?**
 Google's Sub ID is permanent and unique per user per app. Email can change. If a user changes their Google email and logs in again, Sub still matches — email lookup would create a duplicate account.
 
+**Why graceful shutdown with a goroutine in `main.go`?**
+`app.Run()` blocks on `ListenAndServe()`. To also listen for OS signals on the same goroutine, one of them must be in a goroutine. Running the server in a goroutine keeps `main` free to block on `<-quit`. When SIGINT/SIGTERM arrives, `Shutdown(ctx)` is called with a 10-second timeout, which closes the TCP listener (causing `ListenAndServe` to return `ErrServerClosed`) and waits for in-flight requests to finish. `air` is configured with `send_interrupt = true` and `kill_delay = 15s` so it forwards the signal to the child process rather than force-killing it.
+
 ---
 
 ## Planned Features
 
-- [ ] **Forgot Password** — password reset via email token (requires migration 000003 for `password_reset_tokens` table + email sender adapter)
 - [ ] **Email Verification** — verify email on registration before allowing login
 - [ ] **Token Invalidation** — `token_version` column approach (increment on password change/logout to invalidate old JWTs without Redis)
 - [ ] **Soft Delete** — `deleted_at` column, filter in all queries
