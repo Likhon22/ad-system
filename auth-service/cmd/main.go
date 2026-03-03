@@ -8,7 +8,7 @@ package main
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -17,33 +17,44 @@ import (
 	"github.com/likhon22/ad-system/auth-service/config"
 	httpserver "github.com/likhon22/ad-system/auth-service/internal/adapter/inbound/http"
 	"github.com/likhon22/ad-system/auth-service/internal/adapter/outbound/postgres"
+	"github.com/likhon22/ad-system/auth-service/internal/utils"
 )
 
 func main() {
+	jsonHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	})
+	slog.SetDefault(slog.New(utils.NewContextHandler(jsonHandler)))
+
 	cfg, err := config.GetConfig()
 	if err != nil {
-		log.Fatalf("invalid config: %v", err)
+		slog.Error("invalid config", "err", err)
+		os.Exit(1)
 	}
 	pool, err := postgres.NewPool(cfg.DB)
 	if err != nil {
-		log.Fatalf("cannot connect to database: %v", err)
+		slog.Error("cannot connect to database", "err", err)
+		os.Exit(1)
 	}
 	defer pool.Close()
 
 	app := httpserver.NewApp(pool, cfg)
+
 	go func() {
 		if err := app.Run(); err != nil {
-			log.Fatalf("server error: %v", err)
+			slog.Error("server error", "err", err)
+			os.Exit(1)
 		}
 	}()
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-	log.Println("shutting down server...")
+	slog.Info("shutting down server")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := app.Shutdown(ctx); err != nil {
-		log.Fatalf("forced shutdown: %v", err)
+		slog.Error("forced shutdown", "err", err)
+		os.Exit(1)
 	}
-	log.Println("server exited cleanly")
+	slog.Info("server exited cleanly")
 }

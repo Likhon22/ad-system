@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -69,6 +70,11 @@ func (s *authService) Register(ctx context.Context, input inbound.RegisterInput)
 	if err != nil {
 		return nil, err
 	}
+	slog.InfoContext(ctx, "user.registered",
+		"user_id", newUser.ID.String(),
+		"email", newUser.Email,
+		"role", string(newUser.Role),
+	)
 	return &inbound.UserSummary{
 		ID:     newUser.ID,
 		Email:  newUser.Email,
@@ -86,20 +92,30 @@ func (s *authService) Login(ctx context.Context, input inbound.LoginInput) (inbo
 
 	}
 	if user.Provider != "local" {
+		slog.WarnContext(ctx, "user.login.failed",
+			"email", input.Email,
+			"reason", "oauth_account",
+		)
 		return inbound.LoginResponse{}, domain.ErrOAuthUser
 	}
 	if user.Status != domain.StatusActive {
+		slog.WarnContext(ctx, "user.login.failed",
+			"email", input.Email,
+			"reason", "suspended",
+		)
 		return inbound.LoginResponse{}, domain.ErrUserSuspended
 	}
 
 	matched, err := utils.ComparePassword(input.Password, user.PasswordHash)
 	if err != nil {
 		return inbound.LoginResponse{}, err
-
 	}
 	if !matched {
+		slog.WarnContext(ctx, "user.login.failed",
+			"email", input.Email,
+			"reason", "invalid_credentials",
+		)
 		return inbound.LoginResponse{}, domain.ErrInvalidCredentials
-
 	}
 
 	accessToken, err := s.tokenMaker.CreateAccessToken(user.ID, user.Role, user.Email)
@@ -112,6 +128,10 @@ func (s *authService) Login(ctx context.Context, input inbound.LoginInput) (inbo
 		return inbound.LoginResponse{}, err
 	}
 
+	slog.InfoContext(ctx, "user.login.success",
+		"user_id", user.ID.String(),
+		"email", user.Email,
+	)
 	return inbound.LoginResponse{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
@@ -194,6 +214,11 @@ func (s *authService) GoogleCallback(ctx context.Context, code, state, storedSta
 		if userNotFound {
 			existing, emailErr := s.userRepo.FindByEmail(ctx, googleUser.Email)
 			if emailErr == nil && existing.Provider == "local" {
+				slog.WarnContext(ctx, "oauth.email.conflict",
+					"email", googleUser.Email,
+					"attempted_provider", "google",
+					"existing_provider", "local",
+				)
 				return inbound.LoginResponse{}, domain.ErrEmailConflict
 			}
 			return inbound.LoginResponse{}, domain.ErrUserNotFound
@@ -211,6 +236,11 @@ func (s *authService) GoogleCallback(ctx context.Context, code, state, storedSta
 
 		existing, emailErr := s.userRepo.FindByEmail(ctx, googleUser.Email)
 		if emailErr == nil && existing.Provider == "local" {
+			slog.WarnContext(ctx, "oauth.email.conflict",
+				"email", googleUser.Email,
+				"attempted_provider", "google",
+				"existing_provider", "local",
+			)
 			return inbound.LoginResponse{}, domain.ErrEmailConflict
 		}
 
@@ -232,6 +262,12 @@ func (s *authService) GoogleCallback(ctx context.Context, code, state, storedSta
 		if err != nil {
 			return inbound.LoginResponse{}, err
 		}
+		slog.InfoContext(ctx, "user.registered",
+			"user_id", user.ID.String(),
+			"email", user.Email,
+			"provider", "google",
+			"role", string(user.Role),
+		)
 	}
 
 	if user.Status != domain.StatusActive {
@@ -247,6 +283,11 @@ func (s *authService) GoogleCallback(ctx context.Context, code, state, storedSta
 		return inbound.LoginResponse{}, err
 	}
 
+	slog.InfoContext(ctx, "user.login.success",
+		"user_id", user.ID.String(),
+		"email", user.Email,
+		"provider", "google",
+	)
 	return inbound.LoginResponse{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
@@ -286,16 +327,23 @@ func (s *authService) ChangePassword(ctx context.Context, email, currentPassword
 	if err != nil {
 		return err
 	}
-	return s.userRepo.UpdatePassword(ctx, user.ID, newHash)
+	if err := s.userRepo.UpdatePassword(ctx, user.ID, newHash); err != nil {
+		return err
+	}
+	slog.InfoContext(ctx, "user.password.changed",
+		"user_id", user.ID.String(),
+	)
+	return nil
 }
 
 func (s *authService) ForgotPassword(ctx context.Context, email string) error {
 	user, err := s.userRepo.FindByEmail(ctx, email)
-
 	if err != nil {
+		slog.InfoContext(ctx, "password.reset.requested", "found", false)
 		return nil
 	}
 	if user.Provider != "local" {
+		slog.InfoContext(ctx, "password.reset.requested", "found", false)
 		return nil
 	}
 	tokenBytes := make([]byte, 32)
@@ -314,15 +362,20 @@ func (s *authService) ForgotPassword(ctx context.Context, email string) error {
 	}
 
 	resetLink := s.frontendURL + "/reset-password?token=" + plainToken
-
-	return s.emailSender.SendPasswordResetEmail(ctx, user.Email, resetLink)
-
+	if err := s.emailSender.SendPasswordResetEmail(ctx, user.Email, resetLink); err != nil {
+		return err
+	}
+	slog.InfoContext(ctx, "password.reset.email.sent",
+		"user_id", user.ID.String(),
+	)
+	return nil
 }
 func (s *authService) ResetPassword(ctx context.Context, token, newPassword string) error {
 	tokenHash := utils.HashToken(token)
 
 	userID, err := s.resetRepo.FindByTokenHash(ctx, tokenHash)
 	if err != nil {
+		slog.WarnContext(ctx, "password.reset.invalid_token")
 		return domain.ErrInvalidOrExpiredToken
 	}
 
@@ -334,6 +387,11 @@ func (s *authService) ResetPassword(ctx context.Context, token, newPassword stri
 	if err := s.userRepo.UpdatePassword(ctx, userID, newHash); err != nil {
 		return err
 	}
-
-	return s.resetRepo.DeleteAllForUser(ctx, userID)
+	if err := s.resetRepo.DeleteAllForUser(ctx, userID); err != nil {
+		return err
+	}
+	slog.InfoContext(ctx, "password.reset.completed",
+		"user_id", userID.String(),
+	)
+	return nil
 }
