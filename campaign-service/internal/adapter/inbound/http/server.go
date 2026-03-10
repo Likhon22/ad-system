@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/likhon22/ad-system/campaign-service/config"
+	"github.com/likhon22/ad-system/campaign-service/internal/adapter/inbound/http/handler"
+	"github.com/likhon22/ad-system/campaign-service/internal/adapter/inbound/http/middleware"
 )
 
 type App struct {
@@ -15,13 +17,16 @@ type App struct {
 }
 
 func NewApp(cfg *config.Config) *App {
-	// mw := middleware.NewMiddleware()
+	mw := middleware.NewMiddleware()
 	// validate := utils.NewValidator()
+	healthHandler := handler.NewHealthHandler()
+	mux := setupRouter(healthHandler)
+	wrappedMux := middleware.SetUpMiddleware(mux, mw)
 
 	return &App{
 		server: &http.Server{
 			Addr:         cfg.Addr,
-			Handler:      http.NewServeMux(),
+			Handler:      wrappedMux,
 			ReadTimeout:  10 * time.Second,
 			WriteTimeout: 10 * time.Second,
 			IdleTimeout:  30 * time.Second,
